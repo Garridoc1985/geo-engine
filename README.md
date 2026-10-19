@@ -208,3 +208,23 @@ internos. [Estructura, acceso y recorrido](docs/DESARROLLO-SOBRE-SCW.md).
 Interpreta la tarea, recupera conocimiento SCW de la empresa y prepara el contexto
 para el router. Admite respuesta directa, perfil, catálogo, FAQ y contenido GEO.
 El modo predeterminado no consume APIs. [Flujo y contrato](docs/PIPELINE-GEO.md).
+
+El flujo pasó 110 pruebas con ChatGPT simulado y PostgreSQL. Las pruebas
+automatizadas continúan sin llamadas externas.
+[Alcance de esa validación](docs/PRUEBAS-CHATGPT-SIN-API.md).
+
+## Inicio de integración API — paso 6
+
+La etapa vigente conecta primero OpenAI mediante el adaptador `chatgpt`.
+`--provider chatgpt` aísla ese proveedor sin cambiar la prioridad general del router.
+
+```bash
+.venv/bin/python -m geo_engine.cli check-provider --provider chatgpt
+.venv/bin/python -m geo_engine.cli check-provider --provider chatgpt --check-access
+```
+
+El primer comando solo revisa configuración; el segundo consulta el acceso al
+modelo en OpenAI. Ambos funcionan sin PostgreSQL y no generan contenido.
+La prueba de conexión inicial devolvió HTTP 401 con la credencial disponible;
+la generación real está pendiente de una clave válida y un modelo en Ubuntu.
+[Configuración y primera ejecución](docs/INTEGRACION-OPENAI.md).

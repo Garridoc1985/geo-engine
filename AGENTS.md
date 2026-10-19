@@ -20,3 +20,9 @@ sprint es antecedente; el alcance puede evolucionar según la directiva vigente.
 El producto entrega conocimiento a sistemas de IA; no requiere una interfaz de
 consultas para usuarios. Publicación, descubrimiento y medición están habilitados
 para desarrollo. Mantener controles de confidencialidad y autenticación.
+
+Etapa actual: iniciar integración API real con OpenAI, por autorización del
+propietario después de validar el flujo simulado. Comenzar solo con ChatGPT y
+contenido público ficticio; conservar la prioridad general del router. No guardar
+claves ni trasladar sesiones de ChatGPT al proyecto. Las pruebas automatizadas
+siguen usando transporte simulado y no consumen APIs reales.

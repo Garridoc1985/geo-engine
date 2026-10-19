@@ -32,13 +32,31 @@ def main() -> int:
         route.add_argument("--origin", default="generic", help="Etiqueta de IA de origen, sin privilegios de acceso")
         route.add_argument("--company", dest="company_id", required=name == "geo", help="Empresa cuyo conocimiento se utiliza")
         route.add_argument("--task", choices=("auto", *TASKS), default="auto", help="Detectar tarea o indicar una explícitamente")
+        route.add_argument("--provider", choices=("auto", "claude", "chatgpt", "perplexity"), default="auto", help="Restringir a un proveedor; auto conserva la prioridad general")
         route.add_argument("--execute", action="store_true", help="Enviar consulta y contexto al proveedor (puede generar cargos)")
         route.add_argument("--allow-fallback", action="store_true", help="Tras fallo temporal, permitir siguiente proveedor configurado")
         route.add_argument("--request-id", help="UUID estable para impedir repetir una ejecución ya reservada")
     show_run = commands.add_parser("show-run", help="Revisar una ejecución guardada en la base local")
     show_run.add_argument("request_id")
+    check = commands.add_parser("check-provider", help="Diagnosticar configuración y acceso API sin usar PostgreSQL")
+    check.add_argument("--provider", choices=("chatgpt",), required=True)
+    check.add_argument("--check-access", action="store_true", help="Consultar el modelo en OpenAI sin generar contenido")
     args = parser.parse_args()
     try:
+        if args.command == "check-provider":
+            provider = build_providers_from_env(only=args.provider)[0]
+            missing = [name for name, value in (("OPENAI_MODEL", provider.model), ("OPENAI_API_KEY", provider.api_key)) if not value]
+            result = {"provider": provider.name, "model": provider.model or None,
+                      "configured": provider.available, "missing": missing,
+                      "status": "configured" if provider.available else "not_configured"}
+            if args.check_access and provider.available:
+                try:
+                    provider.check_model_access()
+                    result["status"] = "model_accessible"
+                except ProviderError as error:
+                    result.update(status="error", code=error.code)
+            print(json.dumps(result, ensure_ascii=False))
+            return 0 if result["status"] in {"configured", "model_accessible"} else 2
         config = Config.from_env()
         if args.command == "ingest":
             items = load_catalog(args.path)
@@ -58,7 +76,8 @@ def main() -> int:
                 return 2
         else:
             initialize(config.database_url)
-            router = Router(build_providers_from_env(), lambda text, company_id=None: search_public(config.database_url, text, company_id=company_id), PostgresRunStore(config.database_url), lambda company_id, task: task_context(config.database_url, company_id, task))
+            providers = build_providers_from_env(only=None if args.provider == "auto" else args.provider)
+            router = Router(providers, lambda text, company_id=None: search_public(config.database_url, text, company_id=company_id), PostgresRunStore(config.database_url), lambda company_id, task: task_context(config.database_url, company_id, task))
             request = RouterQuery(args.query, args.origin, company_id=args.company_id, task=args.task, **({"request_id": args.request_id} if args.request_id is not None else {}))
             print(f"request_id={request.request_id}", file=sys.stderr)
             result = router.route(request, execute=args.execute, allow_fallback=args.allow_fallback)

@@ -1,4 +1,5 @@
 import json
+import io
 import os
 import threading
 import unittest
@@ -6,6 +7,7 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from uuid import uuid4
+from unittest.mock import patch
 
 import psycopg
 from psycopg import sql
@@ -18,6 +20,7 @@ from geo_engine.retrieval import search_public, task_context
 from geo_engine.router import Router, RouterQuery
 from geo_engine.runs import PostgresRunStore
 from geo_engine.storage import initialize
+from geo_engine.providers import build_providers_from_env
 
 
 class OfflineProvider:
@@ -122,3 +125,30 @@ class GeoPipelineIntegrationTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join(timeout=5)
+
+    def test_chatgpt_only_flow_with_simulated_responses_and_real_postgresql(self):
+        with patch.dict(os.environ, {"OPENAI_MODEL": "test-model", "OPENAI_API_KEY": "dummy-test-key",
+                                     "CLAUDE_MODEL": "test-other", "ANTHROPIC_API_KEY": "dummy-other",
+                                     "PERPLEXITY_MODEL": "test-other", "PERPLEXITY_API_KEY": "dummy-other"}, clear=True):
+            providers = build_providers_from_env(only="chatgpt")
+        router = Router(providers, lambda text, company_id=None: search_public(self.url, text, company_id=company_id),
+                        self.store, lambda company, task: task_context(self.url, company, task))
+        for task in ("answer", "company_profile", "faq"):
+            with self.subTest(task=task):
+                simulated = {"status": "completed", "output": [{"type": "message", "status": "completed", "content": [
+                    {"type": "output_text", "text": f"Respuesta simulada de prueba para {task}"}]}]}
+                with patch("geo_engine.providers.urlopen", return_value=io.BytesIO(json.dumps(simulated).encode())) as transport:
+                    result = router.route(RouterQuery("mantenimiento predictivo", company_id="demo_company", task=task), execute=True)
+                self.assertEqual(result["provider"], "chatgpt")
+                self.assertEqual(result["status"], "draft")
+                self.assertEqual(len(result["attempts"]), 1)
+                self.assertEqual(result["pipeline"]["task"], task)
+                request = transport.call_args.args[0]
+                self.assertEqual(request.full_url, "https://api.openai.com/v1/responses")
+                prompt = json.loads(request.data)["input"]
+                self.assertIn("Aurora", prompt)
+                self.assertNotIn("MARCADOR_INTERNO", prompt)
+                saved = self.store.get(result["request_id"])
+                self.assertEqual(saved["text"], result["text"])
+                self.assertEqual(saved["sources"], result["sources"])
+                self.assertEqual(saved["pipeline"], result["pipeline"])

@@ -11,6 +11,7 @@ import json
 import os
 import re
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
@@ -44,6 +45,27 @@ def urlopen(request: Request, *, timeout: float):
     return build_opener(_NoRedirect()).open(request, timeout=timeout)
 
 
+def _request_json(request: Request, *, timeout: float) -> object:
+    """Transporte común con errores seguros y lectura acotada."""
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            raw = response.read(_MAX_RESPONSE_BYTES + 1)
+    except HTTPError as error:
+        status = error.code
+        error.close()
+        raise ProviderError(
+            f"http_{status}", retryable=status in {408, 429} or 500 <= status <= 599
+        ) from None
+    except (URLError, TimeoutError, OSError, HTTPException):
+        raise ProviderError("transport_error", retryable=True) from None
+    if len(raw) > _MAX_RESPONSE_BYTES:
+        raise ProviderError("response_too_large")
+    try:
+        return json.loads(raw)
+    except (ValueError, UnicodeError):
+        raise ProviderError("invalid_response", retryable=True) from None
+
+
 @dataclass(frozen=True)
 class HTTPProvider:
     name: str
@@ -67,6 +89,21 @@ class HTTPProvider:
     @property
     def available(self) -> bool:
         return bool(self.model.strip() and self.api_key.strip())
+
+    def check_model_access(self) -> None:
+        """Comprueba acceso al modelo OpenAI sin generar contenido empresarial."""
+        if self.name != "chatgpt":
+            raise ProviderError("unsupported_access_check")
+        if not self.available:
+            raise ProviderError("not_configured")
+        request = Request(
+            "https://api.openai.com/v1/models/" + quote(self.model, safe=""),
+            headers={"Authorization": "Bearer " + self.api_key, "Accept": "application/json"},
+            method="GET",
+        )
+        data = _request_json(request, timeout=self.timeout)
+        if not isinstance(data, dict) or data.get("id") != self.model:
+            raise ProviderError("invalid_response", retryable=True)
 
     def generate(self, prompt: str) -> str:
         if not self.available:
@@ -95,24 +132,7 @@ class HTTPProvider:
             headers=headers,
             method="POST",
         )
-        try:
-            with urlopen(request, timeout=self.timeout) as response:
-                raw = response.read(_MAX_RESPONSE_BYTES + 1)
-        except HTTPError as error:
-            status = error.code
-            error.close()
-            raise ProviderError(
-                f"http_{status}", retryable=status in {408, 429} or 500 <= status <= 599
-            ) from None
-        except (URLError, TimeoutError, OSError, HTTPException):
-            raise ProviderError("transport_error", retryable=True) from None
-        if len(raw) > _MAX_RESPONSE_BYTES:
-            raise ProviderError("response_too_large")
-        try:
-            data = json.loads(raw)
-        except (ValueError, UnicodeError):
-            raise ProviderError("invalid_response", retryable=True) from None
-        return self._text(data)
+        return self._text(_request_json(request, timeout=self.timeout))
 
     def _text(self, data: object) -> str:
         if not isinstance(data, dict):
@@ -158,10 +178,12 @@ class HTTPProvider:
         return result
 
 
-def build_providers_from_env() -> list[HTTPProvider]:
+def build_providers_from_env(only: str | None = None) -> list[HTTPProvider]:
     """Modelos explícitos: una clave sin modelo no habilita un proveedor."""
-    return [
-        HTTPProvider("claude", os.getenv("CLAUDE_MODEL", "").strip(), os.getenv("ANTHROPIC_API_KEY", "").strip()),
-        HTTPProvider("chatgpt", os.getenv("OPENAI_MODEL", "").strip(), os.getenv("OPENAI_API_KEY", "").strip()),
-        HTTPProvider("perplexity", os.getenv("PERPLEXITY_MODEL", "").strip(), os.getenv("PERPLEXITY_API_KEY", "").strip()),
-    ]
+    if only is not None and (not isinstance(only, str) or only not in _ENDPOINTS):
+        raise ValueError("Proveedor no admitido")
+    settings = (("claude", "CLAUDE_MODEL", "ANTHROPIC_API_KEY"),
+                ("chatgpt", "OPENAI_MODEL", "OPENAI_API_KEY"),
+                ("perplexity", "PERPLEXITY_MODEL", "PERPLEXITY_API_KEY"))
+    return [HTTPProvider(name, os.getenv(model, "").strip(), os.getenv(key, "").strip())
+            for name, model, key in settings if only is None or name == only]

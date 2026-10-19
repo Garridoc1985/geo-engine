@@ -12,6 +12,10 @@ corresponde fallback. Este módulo no hace reintentos ni llamadas a varios prove
 
 Las variables se definen en Ubuntu y no se imprimen ni guardan en el repositorio.
 Una clave sin modelo, o un modelo sin clave, deja el adaptador no disponible.
+La fábrica admite `only="chatgpt"` y la CLI `--provider chatgpt`: restringen la
+selección sin construir los otros adaptadores. La etapa vigente inicia la
+conexión API real exclusivamente con OpenAI; las pruebas automatizadas siguen
+usando respuestas simuladas.
 No se asumen modelos, suscripciones, saldo ni acceso de la cuenta. `chatgpt` es el
 nombre de prioridad indicado por el propietario; la ejecución usa OpenAI API y su
 facturación, no una sesión del producto ChatGPT.
@@ -25,6 +29,12 @@ que el proveedor sea Perplexity no identifica por sí solo la familia del modelo
 
 `HTTPProvider.generate(prompt)` devuelve texto o `ProviderError(code, retryable)`.
 `available` solo comprueba configuración completa; no comprueba saldo o conectividad.
+`HTTPProvider.check_model_access()` consulta `GET /v1/models/{model}` solo para
+OpenAI. La CLI `check-provider --provider chatgpt` revisa configuración sin red ni
+PostgreSQL; `--check-access` agrega esa consulta autenticada. Solo devuelve estado,
+modelo, variables faltantes y códigos seguros; nunca imprime la clave. El estado
+`model_accessible` verifica acceso a metadatos, sin garantizar saldo ni generación.
+La configuración y el recorrido real están en [integración OpenAI](INTEGRACION-OPENAI.md).
 La respuesta Responses se recorre por elementos `message` y bloques `output_text`;
 no se asume que el primer elemento sea texto ni se usa la comodidad de SDK
 `output_text`, porque el transporte trabaja con JSON HTTP.
