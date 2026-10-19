@@ -91,6 +91,7 @@ Registrar por ejecución: ID de consulta, proveedor/modelo seleccionado, motivo 
 selección, IDs de evidencia, estado y fallos. No registrar secretos ni contenido
 interno completo en logs.
 
-Pendiente de implementar: contrato de consulta normalizada, router, adaptadores,
-modelos concretos, credenciales, política de fallback y pruebas de enrutamiento.
-El catálogo público ya implementado es una fuente de datos; todavía no es el router.
+Implementados contrato de consulta de texto, recuperación pública, router,
+adaptadores HTTP configurables y fallback explícito ante fallos temporales.
+Las pruebas no consumen APIs externas. La ejecución real requiere credenciales y
+modelos concretos por entorno. Ver `ROUTER.md` para estado y límites.

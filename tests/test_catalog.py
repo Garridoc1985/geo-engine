@@ -7,7 +7,8 @@ import threading
 import unittest
 from pathlib import Path
 from uuid import uuid4
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
+from urllib.error import HTTPError
 
 import psycopg
 from psycopg import sql
@@ -16,6 +17,8 @@ from geo_engine.catalog import FIELDS, import_catalog, load_catalog, save_catalo
 from geo_engine.storage import initialize
 from geo_engine.api import create_server
 from geo_engine.config import Config
+from geo_engine.retrieval import search_public
+from geo_engine.router import Router
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "catalog.demo.json"
 
@@ -150,6 +153,43 @@ class CatalogPostgreSQLTests(unittest.TestCase):
                 self.assertTrue(item["source"]["reference"].startswith("demo://catalog/"))
                 self.assertTrue(item["chunk_id"])
                 self.assertTrue(item["document_id"])
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
+    def test_router_plan_recovers_sources_without_calling_provider(self):
+        import_catalog(self.url, sample())
+
+        class UncalledProvider:
+            name = "claude"
+            model = "test-model"
+            available = True
+
+            def generate(self, prompt):
+                raise AssertionError("El endpoint plan no debe consumir APIs")
+
+        router = Router([UncalledProvider()], lambda text: search_public(self.url, text))
+        server = create_server(Config("127.0.0.1", 0, self.url), router)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base = f"http://127.0.0.1:{server.server_port}"
+        try:
+            for query, status in [("diagnóstico comercial", "ready"), ("CONTENIDO_INTERNO_DEMO_09", "insufficient_evidence"), ("astronomía galáctica", "insufficient_evidence")]:
+                request = Request(base + "/v1/router/plan", data=json.dumps({"query": query, "origin": "perplexity"}).encode(), headers={"Content-Type": "application/json"})
+                with urlopen(request, timeout=5) as response:
+                    body = json.load(response)
+                self.assertEqual(body["status"], status)
+                self.assertEqual(body["origin"], "perplexity")
+                if status == "ready":
+                    self.assertEqual(body["provider"], "claude")
+                    self.assertTrue(body["sources"])
+                else:
+                    self.assertEqual(body["sources"], [])
+            for payload in [{"query": "diagnóstico", "principal": "admin"}, {"query": "diagnóstico", "execute": True}, {"query": []}]:
+                with self.assertRaises(HTTPError) as error:
+                    urlopen(Request(base + "/v1/router/plan", data=json.dumps(payload).encode()), timeout=5)
+                self.assertEqual(error.exception.code, 400)
         finally:
             server.shutdown()
             server.server_close()

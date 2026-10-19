@@ -68,7 +68,9 @@ export DATABASE_URL=postgresql:///geo_engine
 - `ingestion.py`: interfaz de ingesta CSV, JSON y catálogo.
 - `catalog.py`: validación de catálogos y persistencia transaccional en PostgreSQL.
 - `cli.py`: entrada de importación desde terminal Ubuntu.
-- `retrieval.py`: interfaz de recuperación con evidencia.
+- `retrieval.py`: recuperación textual PostgreSQL de evidencia pública.
+- `router.py`: planificación y ejecución con prioridad Claude → ChatGPT → Perplexity.
+- `providers.py`: adaptadores HTTP y configuración por entorno.
 - `generation.py`: interfaz de generación y evaluación de suficiencia.
 - `api.py`: arranque y rutas GET `/health` y `/ready`.
 
@@ -93,10 +95,10 @@ No es un servidor de producción ni una API con autenticación implementada.
 
 ARQ-01 deja backend ejecutable, esquema, contratos y puertos de módulos.
 La ingesta de catálogo JSON/CSV tiene implementación local con persistencia.
-Recuperación y generación aún no tienen implementación. Los casos con evidencia,
-sin evidencia y exclusión en la recuperación, los 2 borradores y el recorrido
-completo del sprint quedan pendientes.
-La prueba de permisos actual comprueba únicamente la política del contrato.
+La recuperación pública y el router tienen implementación y pruebas con proveedores
+simulados. La ejecución real requiere claves y modelos configurados por entorno.
+Los 2 borradores revisados, su persistencia y el recorrido completo del sprint quedan
+pendientes; el acceso a información interna no está habilitado en el router.
 
 Antes de exponer datos: implementar autenticación, persistencia y recuperación con
 ACL, validación de ingesta, evaluación de suficiencia, generación y pruebas del flujo.
@@ -147,8 +149,8 @@ Cada oferta genera una fuente, un documento y un fragmento con IDs estables
 `catalog:<id>:source`, `catalog:<id>:document` y `catalog:<id>:chunk:1`.
 El fragmento conserva nombre, tipo y descripción; su fuente se obtiene mediante el
 documento. Las escrituras son atómicas y las recargas idénticas no duplican datos.
-La herramienta solo registra los permisos: el filtrado de recuperación se desarrolla
-en el siguiente incremento. Esta versión usa un único catálogo empresarial local.
+Los permisos se conservan en la ingesta y la recuperación del router excluye los
+registros internos. Esta versión usa un único catálogo empresarial local.
 
 ## Catálogo para consumidores IA — primera salida local
 
@@ -161,3 +163,12 @@ curl --fail http://127.0.0.1:8000/v1/public/catalog
 
 Con los fixtures hay 8 entradas públicas. Es una superficie local de desarrollo;
 no conecta proveedores ni publica el catálogo sintético en Internet.
+
+## Router de IA
+
+```bash
+.venv/bin/python -m geo_engine.cli route "diagnóstico comercial" --origin perplexity
+```
+
+Planifica sin llamadas externas. Para generar se necesitan claves/modelos y la
+opción explícita `--execute`. [Contrato, configuración y límites](docs/ROUTER.md).
