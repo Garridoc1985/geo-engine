@@ -16,6 +16,9 @@ Repositorio independiente con estructura inspirada en el workspace de origen:
 (adaptadores futuros), `reference/scw/` (cargador de evidencia de referencia),
 `docs/`, `fixtures/` y `tests/`. Procedencia en `reference/scw/README.md`.
 
+La estructura de conocimiento empresarial de SCW ya tiene un adaptador operativo
+en el runtime: [desarrollo sobre SCW](docs/DESARROLLO-SOBRE-SCW.md).
+
 ## Ejecutar en Ubuntu
 
 Instalar PostgreSQL y preparar la base local una sola vez. Los comandos de creación
@@ -72,6 +75,8 @@ export DATABASE_URL=postgresql:///geo_engine
 - `router.py`: planificación y ejecución con prioridad Claude → ChatGPT → Perplexity.
 - `providers.py`: adaptadores HTTP y configuración por entorno.
 - `runs.py`: registro PostgreSQL de ejecuciones, borradores y fuentes.
+- `company_knowledge.py`: carga del perfil, dominios y evidencias con estructura SCW.
+- `company_store.py`: persistencia de conocimiento y vinculación por empresa.
 - `generation.py`: interfaz de generación y evaluación de suficiencia.
 - `api.py`: arranque y rutas GET `/health` y `/ready`.
 
@@ -152,7 +157,8 @@ Cada oferta genera una fuente, un documento y un fragmento con IDs estables
 El fragmento conserva nombre, tipo y descripción; su fuente se obtiene mediante el
 documento. Las escrituras son atómicas y las recargas idénticas no duplican datos.
 Los permisos se conservan en la ingesta y la recuperación del router excluye los
-registros internos. Esta versión usa un único catálogo empresarial local.
+registros internos. El catálogo JSON/CSV inicial es global; la importación SCW
+vincula el conocimiento a una empresa y permite consultarlo por `company_id`.
 
 ## Catálogo para consumidores IA — primera salida local
 
@@ -180,3 +186,14 @@ Para revisar un registro local, usar el ID devuelto:
 ```bash
 .venv/bin/python -m geo_engine.cli show-run ID_UUID_DE_LA_EJECUCION
 ```
+
+## Conocimiento empresarial basado en SCW
+
+```bash
+.venv/bin/python -m geo_engine.cli ingest-company demo_company --workspace fixtures/scw_demo
+.venv/bin/python -m geo_engine.cli route "mantenimiento predictivo" --company demo_company --origin perplexity
+```
+
+Importa conocimiento con la estructura `clients/<empresa>/` y lo conecta al router.
+El fixture es ficticio; los documentos sin permiso público explícito permanecen
+internos. [Estructura, acceso y recorrido](docs/DESARROLLO-SOBRE-SCW.md).

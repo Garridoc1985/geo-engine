@@ -1,0 +1,5 @@
+{
+  "company_profile.md": {"visibility": "public", "allowed_principals": [], "source_reference": "demo://aurora/profile"},
+  "products_services.md": {"visibility": "public", "allowed_principals": [], "source_reference": "demo://aurora/products"},
+  "evidence/EV-000001.md": {"visibility": "public", "allowed_principals": [], "source_reference": "demo://aurora/services"}
+}

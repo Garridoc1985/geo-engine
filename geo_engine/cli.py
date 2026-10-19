@@ -13,6 +13,8 @@ from .router import Router, RouterQuery
 from .providers import ProviderError, build_providers_from_env
 from .retrieval import search_public
 from .runs import PostgresRunStore
+from .company_knowledge import CompanyKnowledge
+from .company_store import import_company
 
 
 def main() -> int:
@@ -20,9 +22,13 @@ def main() -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     ingest = commands.add_parser("ingest", help="Importar catálogo JSON o CSV")
     ingest.add_argument("path", type=Path)
+    company = commands.add_parser("ingest-company", help="Importar conocimiento empresarial con estructura SCW")
+    company.add_argument("company_id")
+    company.add_argument("--workspace", type=Path, required=True, help="Raíz que contiene clients/<company_id>")
     route = commands.add_parser("route", help="Planificar una consulta; --execute habilita consumo de API")
     route.add_argument("query")
     route.add_argument("--origin", default="generic", help="Etiqueta de IA de origen, sin privilegios de acceso")
+    route.add_argument("--company", dest="company_id", help="Recuperar conocimiento sólo de esta empresa")
     route.add_argument("--execute", action="store_true", help="Enviar consulta y evidencia pública al proveedor (puede generar cargos)")
     route.add_argument("--allow-fallback", action="store_true", help="Tras fallo temporal, permitir siguiente proveedor configurado")
     route.add_argument("--request-id", help="UUID estable para impedir repetir una ejecución ya reservada")
@@ -35,6 +41,10 @@ def main() -> int:
             items = load_catalog(args.path)
             initialize(config.database_url)
             result = save_catalog(config.database_url, items)
+        elif args.command == "ingest-company":
+            records = CompanyKnowledge(args.workspace, args.company_id).load()
+            initialize(config.database_url)
+            result = import_company(config.database_url, args.company_id, records)
         elif args.command == "show-run":
             from uuid import UUID
             run_id = str(UUID(args.request_id))
@@ -45,8 +55,8 @@ def main() -> int:
                 return 2
         else:
             initialize(config.database_url)
-            router = Router(build_providers_from_env(), lambda text: search_public(config.database_url, text), PostgresRunStore(config.database_url))
-            request = RouterQuery(args.query, args.origin, **({"request_id": args.request_id} if args.request_id is not None else {}))
+            router = Router(build_providers_from_env(), lambda text, company_id=None: search_public(config.database_url, text, company_id=company_id), PostgresRunStore(config.database_url))
+            request = RouterQuery(args.query, args.origin, company_id=args.company_id, **({"request_id": args.request_id} if args.request_id is not None else {}))
             print(f"request_id={request.request_id}", file=sys.stderr)
             result = router.route(request, execute=args.execute, allow_fallback=args.allow_fallback)
         print(json.dumps(result, ensure_ascii=False))

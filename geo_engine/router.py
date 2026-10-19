@@ -1,5 +1,6 @@
 """Router de texto con prioridad explícita y recuperación pública previa."""
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Callable, Protocol
 from uuid import UUID, uuid4
@@ -15,6 +16,7 @@ class RouterQuery:
     query: str
     origin: str = "generic"
     request_id: str = field(default_factory=lambda: str(uuid4()))
+    company_id: str | None = None
 
     def __post_init__(self):
         if not isinstance(self.query, str) or not self.query.strip() or len(self.query) > 4000 or "\x00" in self.query:
@@ -23,6 +25,8 @@ class RouterQuery:
             raise ValueError("origin debe ser un identificador de hasta 100 caracteres")
         if not isinstance(self.request_id, str) or str(UUID(self.request_id)) != self.request_id:
             raise ValueError("request_id debe ser un UUID canónico")
+        if self.company_id is not None and (not isinstance(self.company_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", self.company_id)):
+            raise ValueError("Identificador de empresa inválido")
 
 
 class Provider(Protocol):
@@ -42,7 +46,7 @@ class RunJournal(Protocol):
 
 
 class Router:
-    def __init__(self, providers: list[Provider], retrieve: Callable[[str], tuple[Evidence, ...]], journal: RunJournal | None = None):
+    def __init__(self, providers: list[Provider], retrieve: Callable[..., tuple[Evidence, ...]], journal: RunJournal | None = None):
         if len({p.name for p in providers}) != len(providers):
             raise ValueError("Proveedores duplicados")
         self.providers = sorted(providers, key=lambda p: PRIORITY.index(p.name) if p.name in PRIORITY else len(PRIORITY))
@@ -68,9 +72,11 @@ class Router:
             raise
 
     def _route(self, request: RouterQuery, *, execute: bool, allow_fallback: bool) -> dict:
-        evidence = self.retrieve(request.query)
+        evidence = (self.retrieve(request.query, company_id=request.company_id)
+                    if request.company_id is not None else self.retrieve(request.query))
         result = {
             "request_id": request.request_id, "origin": request.origin,
+            "company_id": request.company_id,
             "status": "insufficient_evidence", "provider": None, "model": None,
             "text": "información insuficiente", "attempts": [],
             "sources": [{"chunk_id": e.chunk_id, "document_id": e.document_id,

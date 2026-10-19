@@ -102,6 +102,9 @@ class PostgresRunStore:
         run_id = _request_id(result.get("request_id"))
         origin, mode = _origin(result.get("origin")), _mode(execute)
         status = result.get("status")
+        company_id = result.get("company_id")
+        if company_id is not None and (not isinstance(company_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", company_id)):
+            raise ValueError("Identificador de empresa inválido")
         if (not isinstance(status, str) or status not in _FINAL_STATUSES
                 or (status == "draft" and not execute) or (status == "ready" and execute)):
             raise ValueError("Estado incompatible con el modo de ejecución")
@@ -138,8 +141,16 @@ class PostgresRunStore:
                     JOIN sources s ON s.id=d.source_id
                     WHERE c.id=%s AND d.id=%s AND s.id=%s AND s.reference=%s
                       AND c.visibility='public' AND d.visibility='public'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM company_documents retired
+                          WHERE retired.document_id=d.id AND NOT retired.active
+                      )
+                      AND (%s::text IS NULL OR EXISTS (
+                          SELECT 1 FROM company_documents cd
+                          WHERE cd.document_id=d.id AND cd.company_id=%s
+                      ))
                     FOR SHARE OF c, d, s
-                """, tuple(source[key] for key in _SOURCE_FIELDS)).fetchone()
+                """, (*tuple(source[key] for key in _SOURCE_FIELDS), company_id, company_id)).fetchone()
                 if match is None:
                     raise ValueError("La evidencia no existe, cambió o no es pública")
             result_id = None
@@ -155,9 +166,9 @@ class PostgresRunStore:
             db.execute("""
                 UPDATE router_runs
                 SET status=%s, provider=%s, model=%s, attempts=%s, evidence=%s,
-                    result_id=%s, finished_at=CURRENT_TIMESTAMP
+                    result_id=%s, company_id=%s, finished_at=CURRENT_TIMESTAMP
                 WHERE request_id=%s
-            """, (status, provider, model, Jsonb(attempts), Jsonb(sources), result_id, run_id))
+            """, (status, provider, model, Jsonb(attempts), Jsonb(sources), result_id, company_id, run_id))
 
     def fail(self, request_id: str) -> None:
         run_id = _request_id(request_id)
@@ -172,7 +183,7 @@ class PostgresRunStore:
         run_id = _request_id(request_id)
         with psycopg.connect(self.database_url, connect_timeout=5, row_factory=dict_row) as db:
             row = db.execute("""
-                SELECT r.request_id, r.origin, r.mode, r.status, r.provider, r.model,
+                SELECT r.request_id, r.origin, r.company_id, r.mode, r.status, r.provider, r.model,
                        r.attempts, r.evidence AS sources, r.result_id,
                        r.started_at, r.finished_at, result.content AS text
                 FROM router_runs r LEFT JOIN results result ON result.id=r.result_id

@@ -99,3 +99,11 @@ modelos concretos por entorno. Ver `ROUTER.md` para estado y límites.
 Las ejecuciones ya se registran en PostgreSQL sin guardar consulta/prompt original;
 los borradores y vínculos a evidencia se guardan atómicamente. Un ID de ejecución
 reservado no puede reutilizarse para volver a consumir un proveedor.
+
+## Desarrollo funcional sobre SCW
+
+El propietario descarta el incremento de revisión de citas y prioriza el desarrollo
+de GEO Engine sobre SCW. Se adapta su cargador de conocimiento empresarial al runtime:
+perfil, productos/servicios, dominios y evidencias alimentan PostgreSQL y el router.
+La recuperación admite `company_id` y mantiene los documentos internos excluidos.
+Ver `DESARROLLO-SOBRE-SCW.md` para ejecutar el recorrido con una empresa ficticia.

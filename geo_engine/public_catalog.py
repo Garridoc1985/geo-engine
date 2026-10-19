@@ -10,6 +10,9 @@ def read_public_catalog(database_url: str) -> dict:
             JOIN documents d ON d.id = c.document_id
             JOIN sources s ON s.id = d.source_id
             WHERE d.visibility = 'public' AND c.visibility = 'public'
+              AND NOT EXISTS (
+                  SELECT 1 FROM company_documents cd WHERE cd.document_id=d.id AND NOT cd.active
+              )
             ORDER BY d.id, c.id
         """).fetchall()
     return {

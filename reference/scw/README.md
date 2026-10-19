@@ -14,3 +14,7 @@ selección de evidencia. No ejecutar `crear_cliente` sobre datos de producción.
 
 Las plantillas trasladadas a `knowledge/templates` mantienen convenciones del
 workspace original; sus referencias RFC son antecedentes, no normas de este proyecto.
+
+La adaptación operativa está en `geo_engine/company_knowledge.py` y se conecta a
+PostgreSQL y al router. Ver `docs/DESARROLLO-SOBRE-SCW.md`; este original de referencia
+permanece sin ejecutarse directamente.

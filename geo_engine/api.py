@@ -13,7 +13,7 @@ import psycopg
 
 def create_server(config: Config, router: Router | None = None) -> ThreadingHTTPServer:
     initialize(config.database_url)
-    router = router or Router(build_providers_from_env(), lambda text: search_public(config.database_url, text), PostgresRunStore(config.database_url))
+    router = router or Router(build_providers_from_env(), lambda text, company_id=None: search_public(config.database_url, text, company_id=company_id), PostgresRunStore(config.database_url))
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
@@ -43,7 +43,7 @@ def create_server(config: Config, router: Router | None = None) -> ThreadingHTTP
                     self.respond(413, {"error": "invalid_body_size"})
                     return
                 payload = json.loads(self.rfile.read(length))
-                if not isinstance(payload, dict) or not {"query"} <= payload.keys() or payload.keys() - {"query", "origin"}:
+                if not isinstance(payload, dict) or not {"query"} <= payload.keys() or payload.keys() - {"query", "origin", "company_id"}:
                     raise ValueError("Campos no admitidos")
                 request = RouterQuery(**payload)
                 self.respond(200, router.route(request))
