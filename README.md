@@ -2,6 +2,12 @@
 
 Repositorio: https://github.com/Garridoc1985/geo-engine (privado, rama `main`).
 
+Goea Engine prepara información empresarial verificable para consumo por sistemas
+de IA como Claude, ChatGPT y Perplexity. Desarrollo y evolución de arquitectura
+habilitados: [definición vigente](docs/PRODUCTO-Y-ARQUITECTURA.md).
+El objetivo es distribución y recuperación por IA; la base inicial no representa
+todavía una integración activa con esos proveedores.
+
 Base ARQ-01 del Sprint 01, preparada para Ubuntu 24.04 y Python 3.12+.
 Usa PostgreSQL y Psycopg 3; no requiere proveedor de IA todavía.
 
@@ -94,7 +100,8 @@ La prueba de permisos actual comprueba únicamente la política del contrato.
 
 Antes de exponer datos: implementar autenticación, persistencia y recuperación con
 ACL, validación de ingesta, evaluación de suficiencia, generación y pruebas del flujo.
-La publicación, CMS y medición de visibilidad siguen fuera del Sprint 01.
+La directiva vigente habilita desarrollar publicación, descubrimiento y medición;
+el alcance anterior del sprint queda como antecedente.
 
 Pendiente de decisión: proveedor/modelo de generación, criterio de suficiencia,
 autenticación e infraestructura de despliegue. No se requiere resolverlos para
@@ -142,3 +149,15 @@ El fragmento conserva nombre, tipo y descripción; su fuente se obtiene mediante
 documento. Las escrituras son atómicas y las recargas idénticas no duplican datos.
 La herramienta solo registra los permisos: el filtrado de recuperación se desarrolla
 en el siguiente incremento. Esta versión usa un único catálogo empresarial local.
+
+## Catálogo para consumidores IA — primera salida local
+
+`GET /v1/public/catalog` devuelve JSON con documentos y fragmentos públicos,
+sus identificadores y referencias. Excluye contenido interno en ambas capas.
+
+```bash
+curl --fail http://127.0.0.1:8000/v1/public/catalog
+```
+
+Con los fixtures hay 8 entradas públicas. Es una superficie local de desarrollo;
+no conecta proveedores ni publica el catálogo sintético en Internet.

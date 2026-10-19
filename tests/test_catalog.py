@@ -3,15 +3,19 @@ import csv
 import json
 import os
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from uuid import uuid4
+from urllib.request import urlopen
 
 import psycopg
 from psycopg import sql
 from psycopg.conninfo import make_conninfo
 from geo_engine.catalog import FIELDS, import_catalog, load_catalog, save_catalog, validate_catalog
 from geo_engine.storage import initialize
+from geo_engine.api import create_server
+from geo_engine.config import Config
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "catalog.demo.json"
 
@@ -123,6 +127,33 @@ class CatalogPostgreSQLTests(unittest.TestCase):
             self.assertEqual(db.execute("SELECT COUNT(*) FROM sources").fetchone()[0], 0)
             self.assertEqual(db.execute("SELECT COUNT(*) FROM documents").fetchone()[0], 0)
             self.assertEqual(db.execute("SELECT COUNT(*) FROM chunks").fetchone()[0], 0)
+
+    def test_public_api_excludes_internal_documents_and_chunks(self):
+        import_catalog(self.url, sample())
+        with psycopg.connect(self.url) as db:
+            # Aunque un fragmento se marque público, su documento interno lo excluye.
+            db.execute("UPDATE chunks SET visibility='public' WHERE id='catalog:demo-09:chunk:1'")
+            # Aunque el documento sea público, su fragmento interno queda excluido.
+            db.execute("UPDATE chunks SET visibility='internal' WHERE id='catalog:demo-01:chunk:1'")
+        server = create_server(Config("127.0.0.1", 0, self.url))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with urlopen(f"http://127.0.0.1:{server.server_port}/v1/public/catalog", timeout=5) as response:
+                self.assertEqual(response.status, 200)
+                body = json.load(response)
+            self.assertEqual(len(body["items"]), 7)
+            serialized = json.dumps(body)
+            for excluded in ("demo-01", "demo-09", "demo-10", "CONTENIDO_INTERNO", "demo-sales", "demo-admin"):
+                self.assertNotIn(excluded, serialized)
+            for item in body["items"]:
+                self.assertTrue(item["source"]["reference"].startswith("demo://catalog/"))
+                self.assertTrue(item["chunk_id"])
+                self.assertTrue(item["document_id"])
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
 
 
 if __name__ == "__main__":

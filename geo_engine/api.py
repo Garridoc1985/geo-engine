@@ -3,6 +3,8 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from .config import Config
 from .storage import initialize, ready
+from .public_catalog import read_public_catalog
+import psycopg
 
 
 def create_server(config: Config) -> ThreadingHTTPServer:
@@ -15,6 +17,11 @@ def create_server(config: Config) -> ThreadingHTTPServer:
             elif self.path == "/ready":
                 available = ready(config.database_url)
                 self.respond(200 if available else 503, {"database": "ready" if available else "unavailable"})
+            elif self.path == "/v1/public/catalog":
+                try:
+                    self.respond(200, read_public_catalog(config.database_url))
+                except psycopg.Error:
+                    self.respond(503, {"error": "database_unavailable"})
             else:
                 self.respond(404, {"error": "not_found"})
 

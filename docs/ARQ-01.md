@@ -1,5 +1,9 @@
 # ARQ-01 — Base técnica local
 
+Nota del 19 de octubre de 2026: registro del alcance inicial. La directiva
+`PRODUCTO-Y-ARQUITECTURA.md` habilita evolución arquitectónica y define el producto
+como infraestructura de conocimiento consumida por IA; prevalece sobre este alcance.
+
 Fecha: 19 de octubre de 2026. Plataforma objetivo: Ubuntu 24.04 mediante WSL2.
 
 ## Contexto revisado
