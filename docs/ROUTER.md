@@ -6,6 +6,8 @@ Una consulta normalizada contiene `query` (texto de hasta 4000 caracteres) y `or
 (etiqueta de la IA de origen, por ejemplo `claude`, `chatgpt`, `perplexity` u otra).
 El servidor genera un `request_id`. La etiqueta origin no concede permisos ni fija
 el proveedor de destino. En esta versión solo se admite texto y evidencia pública.
+También admite `company_id` y `task` (`auto` por defecto). El paso 5 prepara tareas
+y contexto antes de elegir proveedor; ver [pipeline GEO](PIPELINE-GEO.md).
 
 La recuperación PostgreSQL usa búsqueda textual española sobre fragmentos; exige
 que documento y fragmento sean públicos. Devuelve hasta cinco evidencias ordenadas

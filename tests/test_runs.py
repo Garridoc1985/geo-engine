@@ -106,6 +106,9 @@ class RunPostgreSQLTests(unittest.TestCase):
         run_id = self.begin()
         result = response(run_id)
         result.update(query="query-secret-marker", prompt="prompt-secret-marker")
+        result["pipeline"] = {"version": "1", "task": "answer", "output_format": "direct_answer",
+                              "selection_reason": "default_answer", "phase": "provider_completed",
+                              "context_items": 1, "context_characters": 10, "search_text": "search-secret-marker"}
         result["attempts"][0].update(error_body="error-secret-marker", api_key="key-secret-marker")
         result["sources"][0].update(content="content-secret-marker")
         self.store.complete(result, True)
@@ -119,7 +122,9 @@ class RunPostgreSQLTests(unittest.TestCase):
         self.assertIsInstance(saved["finished_at"], str)
         self.assertEqual(saved["attempts"], response(run_id)["attempts"])
         serialized = json.dumps(saved)
-        for marker in ("query-secret", "prompt-secret", "error-secret", "key-secret", "content-secret"):
+        self.assertEqual(saved["pipeline"]["task"], "answer")
+        self.assertNotIn("search_text", saved["pipeline"])
+        for marker in ("query-secret", "prompt-secret", "error-secret", "key-secret", "content-secret", "search-secret"):
             self.assertNotIn(marker, serialized)
         with psycopg.connect(self.url) as db:
             self.assertEqual(db.execute("SELECT id, branch, status, content FROM results").fetchall(),

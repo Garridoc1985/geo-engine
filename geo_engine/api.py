@@ -4,7 +4,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from .config import Config
 from .storage import initialize, ready
 from .public_catalog import read_public_catalog
-from .retrieval import search_public
+from .retrieval import search_public, task_context
+from .pipeline import TASKS
 from .router import PRIORITY, Router, RouterQuery
 from .providers import build_providers_from_env
 from .runs import PostgresRunStore
@@ -13,7 +14,7 @@ import psycopg
 
 def create_server(config: Config, router: Router | None = None) -> ThreadingHTTPServer:
     initialize(config.database_url)
-    router = router or Router(build_providers_from_env(), lambda text, company_id=None: search_public(config.database_url, text, company_id=company_id), PostgresRunStore(config.database_url))
+    router = router or Router(build_providers_from_env(), lambda text, company_id=None: search_public(config.database_url, text, company_id=company_id), PostgresRunStore(config.database_url), lambda company_id, task: task_context(config.database_url, company_id, task))
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
@@ -30,11 +31,14 @@ def create_server(config: Config, router: Router | None = None) -> ThreadingHTTP
             elif self.path == "/v1/router":
                 self.respond(200, {"priority": list(PRIORITY), "tasks": ["text"],
                                    "execution": "local_cli_only", "plan_endpoint": "/v1/router/plan"})
+            elif self.path == "/v1/geo":
+                self.respond(200, {"tasks": list(TASKS), "priority": list(PRIORITY), "company_required": True,
+                                   "execution": "local_cli_only", "plan_endpoint": "/v1/geo/plan"})
             else:
                 self.respond(404, {"error": "not_found"})
 
         def do_POST(self) -> None:
-            if self.path != "/v1/router/plan":
+            if self.path not in {"/v1/router/plan", "/v1/geo/plan"}:
                 self.respond(404, {"error": "not_found"})
                 return
             try:
@@ -43,8 +47,10 @@ def create_server(config: Config, router: Router | None = None) -> ThreadingHTTP
                     self.respond(413, {"error": "invalid_body_size"})
                     return
                 payload = json.loads(self.rfile.read(length))
-                if not isinstance(payload, dict) or not {"query"} <= payload.keys() or payload.keys() - {"query", "origin", "company_id"}:
+                if not isinstance(payload, dict) or not {"query"} <= payload.keys() or payload.keys() - {"query", "origin", "company_id", "task"}:
                     raise ValueError("Campos no admitidos")
+                if self.path == "/v1/geo/plan" and not payload.get("company_id"):
+                    raise ValueError("Se requiere company_id")
                 request = RouterQuery(**payload)
                 self.respond(200, router.route(request))
             except (ValueError, UnicodeError):

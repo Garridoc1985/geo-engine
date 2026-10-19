@@ -126,3 +126,12 @@ class RouterTests(unittest.TestCase):
             Router([provider], lambda _: EVIDENCE, Journal()).route(query, execute=True, allow_fallback=True)
         self.assertEqual(len(provider.calls), 1)
         self.assertEqual(events, [query.request_id])
+
+    def test_specific_match_precedes_general_company_context(self):
+        general = tuple(Evidence(f"general-{n}", f"domain-{n}", Source(f"source-{n}", "demo://general", "General"), "Contexto general") for n in range(5))
+        router = Router([FakeProvider("claude")], lambda text, company_id=None: EVIDENCE,
+                        domain_retrieve=lambda company, task: general)
+        result = router.route(RouterQuery("preguntas frecuentes de diagnóstico", company_id="demo_company", task="faq"))
+        self.assertEqual(result["sources"][0]["chunk_id"], "c1")
+        self.assertEqual(len(result["sources"]), 5)
+        self.assertEqual(result["pipeline"]["task"], "faq")

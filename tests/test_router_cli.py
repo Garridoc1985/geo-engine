@@ -42,3 +42,14 @@ class RouterCLITests(unittest.TestCase):
                 else:
                     self.assertEqual(code, 1)
                     router.return_value.route.assert_not_called()
+
+    def test_geo_command_passes_company_task_and_does_not_execute_by_default(self):
+        with patch("sys.argv", ["geo", "geo", "prepara información", "--company", "demo_company", "--task", "catalog"]), \
+             patch("geo_engine.cli.Config.from_env", return_value=Config("127.0.0.1", 8000, "postgresql:///unused")), \
+             patch("geo_engine.cli.initialize"), patch("geo_engine.cli.build_providers_from_env", return_value=[]), \
+             patch("geo_engine.cli.Router") as router, contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            router.return_value.route.return_value = {"status": "no_provider"}
+            self.assertEqual(main(), 0)
+            request = router.return_value.route.call_args.args[0]
+            self.assertEqual((request.company_id, request.task), ("demo_company", "catalog"))
+            self.assertFalse(router.return_value.route.call_args.kwargs["execute"])

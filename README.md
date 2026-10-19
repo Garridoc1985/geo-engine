@@ -73,6 +73,7 @@ export DATABASE_URL=postgresql:///geo_engine
 - `cli.py`: entrada de importación desde terminal Ubuntu.
 - `retrieval.py`: recuperación textual PostgreSQL de evidencia pública.
 - `router.py`: planificación y ejecución con prioridad Claude → ChatGPT → Perplexity.
+- `pipeline.py`: interpretación de tareas GEO y preparación de contexto y formato.
 - `providers.py`: adaptadores HTTP y configuración por entorno.
 - `runs.py`: registro PostgreSQL de ejecuciones, borradores y fuentes.
 - `company_knowledge.py`: carga del perfil, dominios y evidencias con estructura SCW.
@@ -197,3 +198,13 @@ Para revisar un registro local, usar el ID devuelto:
 Importa conocimiento con la estructura `clients/<empresa>/` y lo conecta al router.
 El fixture es ficticio; los documentos sin permiso público explícito permanecen
 internos. [Estructura, acceso y recorrido](docs/DESARROLLO-SOBRE-SCW.md).
+
+## Pipeline GEO — paso 5
+
+```bash
+.venv/bin/python -m geo_engine.cli geo "Prepara preguntas frecuentes" --company demo_company --task faq
+```
+
+Interpreta la tarea, recupera conocimiento SCW de la empresa y prepara el contexto
+para el router. Admite respuesta directa, perfil, catálogo, FAQ y contenido GEO.
+El modo predeterminado no consume APIs. [Flujo y contrato](docs/PIPELINE-GEO.md).

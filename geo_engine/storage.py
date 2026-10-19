@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS router_runs (
     finished_at TIMESTAMPTZ
 );
 ALTER TABLE router_runs ADD COLUMN IF NOT EXISTS company_id TEXT;
+ALTER TABLE router_runs ADD COLUMN IF NOT EXISTS pipeline JSONB NOT NULL DEFAULT '{}';
 """
 
 

@@ -18,6 +18,22 @@ _SOURCE_FIELDS = ("chunk_id", "document_id", "source_id", "reference")
 _ATTEMPT_FIELDS = ("provider", "model", "status", "code")
 
 
+def _pipeline(value: object) -> dict:
+    if value is None:
+        return {}
+    formats = {"answer": "direct_answer", "company_profile": "company_profile", "catalog": "catalog_list", "faq": "faq_pairs", "geo_content": "geo_brief"}
+    if not isinstance(value, dict) or value.get("version") != "1" or not isinstance(value.get("task"), str) or value["task"] not in formats:
+        raise ValueError("Metadatos de pipeline inválidos")
+    if value.get("output_format") != formats[value["task"]] or value.get("selection_reason") not in ("explicit_task", "detected_task", "default_answer"):
+        raise ValueError("Formato o motivo de pipeline inválido")
+    if value.get("phase") not in ("no_evidence", "no_provider", "provider_selected", "provider_error", "provider_completed"):
+        raise ValueError("Fase de pipeline inválida")
+    for name, maximum in (("context_items", 5), ("context_characters", 12000)):
+        if type(value.get(name)) is not int or not 0 <= value[name] <= maximum:
+            raise ValueError("Presupuesto de contexto inválido")
+    return {key: value[key] for key in ("version", "task", "output_format", "selection_reason", "phase", "context_items", "context_characters")}
+
+
 def _request_id(value: str) -> str:
     if not isinstance(value, str):
         raise ValueError("request_id debe ser un UUID válido")
@@ -117,6 +133,9 @@ class PostgresRunStore:
             raise ValueError("Proveedor y modelo inválidos para el resultado")
         attempts = _attempts(result.get("attempts", []))
         sources = _sources(result.get("sources", []))
+        pipeline = _pipeline(result.get("pipeline"))
+        if pipeline and pipeline["context_items"] != len(sources):
+            raise ValueError("Contexto y fuentes del pipeline no coinciden")
         content = None
         if execute and status == "draft":
             content = result.get("text")
@@ -166,9 +185,9 @@ class PostgresRunStore:
             db.execute("""
                 UPDATE router_runs
                 SET status=%s, provider=%s, model=%s, attempts=%s, evidence=%s,
-                    result_id=%s, company_id=%s, finished_at=CURRENT_TIMESTAMP
+                    result_id=%s, company_id=%s, pipeline=%s, finished_at=CURRENT_TIMESTAMP
                 WHERE request_id=%s
-            """, (status, provider, model, Jsonb(attempts), Jsonb(sources), result_id, company_id, run_id))
+            """, (status, provider, model, Jsonb(attempts), Jsonb(sources), result_id, company_id, Jsonb(pipeline), run_id))
 
     def fail(self, request_id: str) -> None:
         run_id = _request_id(request_id)
@@ -184,7 +203,7 @@ class PostgresRunStore:
         with psycopg.connect(self.database_url, connect_timeout=5, row_factory=dict_row) as db:
             row = db.execute("""
                 SELECT r.request_id, r.origin, r.company_id, r.mode, r.status, r.provider, r.model,
-                       r.attempts, r.evidence AS sources, r.result_id,
+                       r.attempts, r.evidence AS sources, r.result_id, r.pipeline,
                        r.started_at, r.finished_at, result.content AS text
                 FROM router_runs r LEFT JOIN results result ON result.id=r.result_id
                 WHERE r.request_id=%s

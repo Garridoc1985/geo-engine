@@ -107,3 +107,7 @@ de GEO Engine sobre SCW. Se adapta su cargador de conocimiento empresarial al ru
 perfil, productos/servicios, dominios y evidencias alimentan PostgreSQL y el router.
 La recuperación admite `company_id` y mantiene los documentos internos excluidos.
 Ver `DESARROLLO-SOBRE-SCW.md` para ejecutar el recorrido con una empresa ficticia.
+
+El paso 5 está implementado en `pipeline.py`: interpreta la tarea, extrae términos,
+recupera contexto público empresarial y prepara las instrucciones/formato antes
+del router. Los metadatos se registran en PostgreSQL. Ver `PIPELINE-GEO.md`.

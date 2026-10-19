@@ -11,7 +11,8 @@ from .config import Config
 from .storage import initialize
 from .router import Router, RouterQuery
 from .providers import ProviderError, build_providers_from_env
-from .retrieval import search_public
+from .retrieval import search_public, task_context
+from .pipeline import TASKS
 from .runs import PostgresRunStore
 from .company_knowledge import CompanyKnowledge
 from .company_store import import_company
@@ -25,13 +26,15 @@ def main() -> int:
     company = commands.add_parser("ingest-company", help="Importar conocimiento empresarial con estructura SCW")
     company.add_argument("company_id")
     company.add_argument("--workspace", type=Path, required=True, help="Raíz que contiene clients/<company_id>")
-    route = commands.add_parser("route", help="Planificar una consulta; --execute habilita consumo de API")
-    route.add_argument("query")
-    route.add_argument("--origin", default="generic", help="Etiqueta de IA de origen, sin privilegios de acceso")
-    route.add_argument("--company", dest="company_id", help="Recuperar conocimiento sólo de esta empresa")
-    route.add_argument("--execute", action="store_true", help="Enviar consulta y evidencia pública al proveedor (puede generar cargos)")
-    route.add_argument("--allow-fallback", action="store_true", help="Tras fallo temporal, permitir siguiente proveedor configurado")
-    route.add_argument("--request-id", help="UUID estable para impedir repetir una ejecución ya reservada")
+    for name in ("route", "geo"):
+        route = commands.add_parser(name, help="Pipeline GEO; por defecto planifica sin consumir APIs")
+        route.add_argument("query")
+        route.add_argument("--origin", default="generic", help="Etiqueta de IA de origen, sin privilegios de acceso")
+        route.add_argument("--company", dest="company_id", required=name == "geo", help="Empresa cuyo conocimiento se utiliza")
+        route.add_argument("--task", choices=("auto", *TASKS), default="auto", help="Detectar tarea o indicar una explícitamente")
+        route.add_argument("--execute", action="store_true", help="Enviar consulta y contexto al proveedor (puede generar cargos)")
+        route.add_argument("--allow-fallback", action="store_true", help="Tras fallo temporal, permitir siguiente proveedor configurado")
+        route.add_argument("--request-id", help="UUID estable para impedir repetir una ejecución ya reservada")
     show_run = commands.add_parser("show-run", help="Revisar una ejecución guardada en la base local")
     show_run.add_argument("request_id")
     args = parser.parse_args()
@@ -55,12 +58,12 @@ def main() -> int:
                 return 2
         else:
             initialize(config.database_url)
-            router = Router(build_providers_from_env(), lambda text, company_id=None: search_public(config.database_url, text, company_id=company_id), PostgresRunStore(config.database_url))
-            request = RouterQuery(args.query, args.origin, company_id=args.company_id, **({"request_id": args.request_id} if args.request_id is not None else {}))
+            router = Router(build_providers_from_env(), lambda text, company_id=None: search_public(config.database_url, text, company_id=company_id), PostgresRunStore(config.database_url), lambda company_id, task: task_context(config.database_url, company_id, task))
+            request = RouterQuery(args.query, args.origin, company_id=args.company_id, task=args.task, **({"request_id": args.request_id} if args.request_id is not None else {}))
             print(f"request_id={request.request_id}", file=sys.stderr)
             result = router.route(request, execute=args.execute, allow_fallback=args.allow_fallback)
         print(json.dumps(result, ensure_ascii=False))
-        if args.command == "route" and args.execute and result["status"] in {"provider_error", "no_provider", "insufficient_evidence"}:
+        if args.command in {"route", "geo"} and args.execute and result["status"] in {"provider_error", "no_provider", "insufficient_evidence"}:
             return 2
         return 0
     except (ValueError, OSError, csv.Error) as error:
