@@ -64,3 +64,33 @@ Claude, ChatGPT o Perplexity. Cada canal deberá implementarse y validarse por s
 El endpoint inicial es de desarrollo y usa el catálogo sintético de una sola empresa.
 No es publicación web, integración con proveedores ni aprobación editorial automatizada.
 La exposición externa requiere decidir dominio, despliegue y datos aprobados.
+
+## Router de IA — jerarquía indicada por el propietario
+
+Orden vigente: **Claude → ChatGPT → Perplexity → otras IA**.
+Son familias de proveedores, no identificadores concretos de modelos API.
+
+| Prioridad | Proveedor | Participación |
+| --- | --- | --- |
+| 1 | Claude | Primera opción para las consultas compatibles y autorizadas |
+| 2 | ChatGPT | Segunda opción según compatibilidad y política de enrutamiento |
+| 3 | Perplexity | Tercera opción según compatibilidad y política de enrutamiento |
+| 4 | Otras IA | Adaptadores futuros posteriores a las tres prioritarias |
+
+El router recibe consultas de distintos sistemas de IA, normaliza su formato,
+identifica la tarea y los permisos, recupera evidencia autorizada y adapta el
+mensaje y la respuesta al proveedor elegido. La IA que origina una consulta y el
+proveedor que la procesa son conceptos independientes.
+
+La prioridad se aplica entre proveedores elegibles. Una consulta no debe enviarse
+a los tres automáticamente. No se asignan especialidades fijas por marca sin
+verificar capacidades. El cambio de proveedor ante un error o incompatibilidad
+se regirá por una política explícita, preservando confidencialidad y trazabilidad.
+
+Registrar por ejecución: ID de consulta, proveedor/modelo seleccionado, motivo de
+selección, IDs de evidencia, estado y fallos. No registrar secretos ni contenido
+interno completo en logs.
+
+Pendiente de implementar: contrato de consulta normalizada, router, adaptadores,
+modelos concretos, credenciales, política de fallback y pruebas de enrutamiento.
+El catálogo público ya implementado es una fuente de datos; todavía no es el router.
