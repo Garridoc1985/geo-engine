@@ -1,4 +1,4 @@
-# Goea Engine — definición vigente y desarrollo habilitado
+# GEO Engine — definición vigente y desarrollo habilitado
 
 19 de octubre de 2026. Directiva explícita del propietario en esta conversación.
 Este documento prevalece sobre el alcance inicial del sprint en caso de conflicto.

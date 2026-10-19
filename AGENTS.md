@@ -1,4 +1,4 @@
-# Goea Engine — instrucciones de desarrollo
+# GEO Engine — instrucciones de desarrollo
 
 Responder en español. Runtime objetivo: Ubuntu 24.04, Python 3.12 y PostgreSQL.
 Leer README.md y docs/ARQ-01.md antes de modificar el núcleo.

@@ -1,4 +1,4 @@
-# Conocimiento de Goea Engine
+# Conocimiento de GEO Engine
 
 `templates/` contiene plantillas iniciales para productos/servicios y registro de
 evidencias, adaptadas nominalmente del workspace de origen.

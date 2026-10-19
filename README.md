@@ -1,8 +1,8 @@
-# Goea Engine — Inteligencia Comercial y GEO
+# GEO Engine — Inteligencia Comercial y GEO
 
 Repositorio: https://github.com/Garridoc1985/geo-engine (privado, rama `main`).
 
-Goea Engine prepara información empresarial verificable para consumo por sistemas
+GEO Engine prepara información empresarial verificable para consumo por sistemas
 de IA como Claude, ChatGPT y Perplexity. Desarrollo y evolución de arquitectura
 habilitados: [definición vigente](docs/PRODUCTO-Y-ARQUITECTURA.md).
 El objetivo es distribución y recuperación por IA; la base inicial no representa

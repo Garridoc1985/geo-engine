@@ -1,4 +1,4 @@
-"""Carga el conocimiento específico de cada cliente de Goea Engine.
+"""Carga el conocimiento específico de cada cliente de GEO Engine.
 
 El contrato productivo se basa en ``evidence_registry.md`` y en los registros
 Markdown enlazados desde su tabla. Los antiguos archivos por dominio continúan

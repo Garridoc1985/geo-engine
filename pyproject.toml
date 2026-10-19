@@ -1,7 +1,7 @@
 [project]
 name = "geo-engine"
 version = "0.1.0"
-description = "Goea Engine: inteligencia comercial y generación GEO con evidencia"
+description = "GEO Engine: inteligencia comercial y generación GEO con evidencia"
 requires-python = ">=3.12"
 dependencies = ["psycopg[binary]>=3.2,<4"]
 
