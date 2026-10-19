@@ -71,6 +71,7 @@ export DATABASE_URL=postgresql:///geo_engine
 - `retrieval.py`: recuperación textual PostgreSQL de evidencia pública.
 - `router.py`: planificación y ejecución con prioridad Claude → ChatGPT → Perplexity.
 - `providers.py`: adaptadores HTTP y configuración por entorno.
+- `runs.py`: registro PostgreSQL de ejecuciones, borradores y fuentes.
 - `generation.py`: interfaz de generación y evaluación de suficiencia.
 - `api.py`: arranque y rutas GET `/health` y `/ready`.
 
@@ -97,8 +98,9 @@ ARQ-01 deja backend ejecutable, esquema, contratos y puertos de módulos.
 La ingesta de catálogo JSON/CSV tiene implementación local con persistencia.
 La recuperación pública y el router tienen implementación y pruebas con proveedores
 simulados. La ejecución real requiere claves y modelos configurados por entorno.
-Los 2 borradores revisados, su persistencia y el recorrido completo del sprint quedan
-pendientes; el acceso a información interna no está habilitado en el router.
+Los borradores generados y sus fuentes se persisten junto al registro de ejecución.
+Los 2 borradores revisados con proveedor real y el recorrido completo del sprint
+quedan pendientes; el acceso a información interna no está habilitado en el router.
 
 Antes de exponer datos: implementar autenticación, persistencia y recuperación con
 ACL, validación de ingesta, evaluación de suficiencia, generación y pruebas del flujo.
@@ -172,3 +174,9 @@ no conecta proveedores ni publica el catálogo sintético en Internet.
 
 Planifica sin llamadas externas. Para generar se necesitan claves/modelos y la
 opción explícita `--execute`. [Contrato, configuración y límites](docs/ROUTER.md).
+
+Para revisar un registro local, usar el ID devuelto:
+
+```bash
+.venv/bin/python -m geo_engine.cli show-run ID_UUID_DE_LA_EJECUCION
+```

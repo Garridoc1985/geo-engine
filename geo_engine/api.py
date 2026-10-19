@@ -7,12 +7,13 @@ from .public_catalog import read_public_catalog
 from .retrieval import search_public
 from .router import PRIORITY, Router, RouterQuery
 from .providers import build_providers_from_env
+from .runs import PostgresRunStore
 import psycopg
 
 
 def create_server(config: Config, router: Router | None = None) -> ThreadingHTTPServer:
     initialize(config.database_url)
-    router = router or Router(build_providers_from_env(), lambda text: search_public(config.database_url, text))
+    router = router or Router(build_providers_from_env(), lambda text: search_public(config.database_url, text), PostgresRunStore(config.database_url))
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:

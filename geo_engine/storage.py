@@ -35,6 +35,22 @@ CREATE TABLE IF NOT EXISTS result_evidence (
     chunk_id TEXT NOT NULL REFERENCES chunks(id),
     PRIMARY KEY(result_id, chunk_id)
 );
+CREATE TABLE IF NOT EXISTS router_runs (
+    request_id UUID PRIMARY KEY,
+    origin TEXT NOT NULL,
+    mode TEXT NOT NULL CHECK(mode IN ('plan', 'execute')),
+    status TEXT NOT NULL CHECK(status IN (
+        'started', 'ready', 'draft', 'insufficient_evidence',
+        'no_provider', 'provider_error', 'failed'
+    )),
+    provider TEXT,
+    model TEXT,
+    attempts JSONB NOT NULL DEFAULT '[]',
+    evidence JSONB NOT NULL DEFAULT '[]',
+    result_id TEXT REFERENCES results(id),
+    started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finished_at TIMESTAMPTZ
+);
 """
 
 
@@ -46,6 +62,6 @@ def initialize(database_url: str) -> None:
 def ready(database_url: str) -> bool:
     try:
         with psycopg.connect(database_url, connect_timeout=5) as connection:
-            return connection.execute("SELECT version FROM schema_version").fetchone() == (1,)
+            return connection.execute("SELECT version, to_regclass('router_runs') IS NOT NULL FROM schema_version").fetchone() == (1, True)
     except psycopg.Error:
         return False

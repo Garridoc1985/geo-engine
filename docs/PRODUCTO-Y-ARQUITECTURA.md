@@ -95,3 +95,7 @@ Implementados contrato de consulta de texto, recuperación pública, router,
 adaptadores HTTP configurables y fallback explícito ante fallos temporales.
 Las pruebas no consumen APIs externas. La ejecución real requiere credenciales y
 modelos concretos por entorno. Ver `ROUTER.md` para estado y límites.
+
+Las ejecuciones ya se registran en PostgreSQL sin guardar consulta/prompt original;
+los borradores y vínculos a evidencia se guardan atómicamente. Un ID de ejecución
+reservado no puede reutilizarse para volver a consumir un proveedor.

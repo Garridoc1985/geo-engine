@@ -12,6 +12,7 @@ from .storage import initialize
 from .router import Router, RouterQuery
 from .providers import ProviderError, build_providers_from_env
 from .retrieval import search_public
+from .runs import PostgresRunStore
 
 
 def main() -> int:
@@ -24,6 +25,9 @@ def main() -> int:
     route.add_argument("--origin", default="generic", help="Etiqueta de IA de origen, sin privilegios de acceso")
     route.add_argument("--execute", action="store_true", help="Enviar consulta y evidencia pública al proveedor (puede generar cargos)")
     route.add_argument("--allow-fallback", action="store_true", help="Tras fallo temporal, permitir siguiente proveedor configurado")
+    route.add_argument("--request-id", help="UUID estable para impedir repetir una ejecución ya reservada")
+    show_run = commands.add_parser("show-run", help="Revisar una ejecución guardada en la base local")
+    show_run.add_argument("request_id")
     args = parser.parse_args()
     try:
         config = Config.from_env()
@@ -31,15 +35,26 @@ def main() -> int:
             items = load_catalog(args.path)
             initialize(config.database_url)
             result = save_catalog(config.database_url, items)
+        elif args.command == "show-run":
+            from uuid import UUID
+            run_id = str(UUID(args.request_id))
+            initialize(config.database_url)
+            result = PostgresRunStore(config.database_url).get(run_id)
+            if result is None:
+                print("Ejecución no encontrada", file=sys.stderr)
+                return 2
         else:
-            router = Router(build_providers_from_env(), lambda text: search_public(config.database_url, text))
-            result = router.route(RouterQuery(args.query, args.origin), execute=args.execute, allow_fallback=args.allow_fallback)
+            initialize(config.database_url)
+            router = Router(build_providers_from_env(), lambda text: search_public(config.database_url, text), PostgresRunStore(config.database_url))
+            request = RouterQuery(args.query, args.origin, **({"request_id": args.request_id} if args.request_id is not None else {}))
+            print(f"request_id={request.request_id}", file=sys.stderr)
+            result = router.route(request, execute=args.execute, allow_fallback=args.allow_fallback)
         print(json.dumps(result, ensure_ascii=False))
         if args.command == "route" and args.execute and result["status"] in {"provider_error", "no_provider", "insufficient_evidence"}:
             return 2
         return 0
     except (ValueError, OSError, csv.Error) as error:
-        print(f"Ingesta rechazada: {error}", file=sys.stderr)
+        print(f"Operación rechazada: {error}", file=sys.stderr)
         return 1
     except psycopg.Error:
         print("No se pudo completar la transacción PostgreSQL. Revise conexión y esquema.", file=sys.stderr)

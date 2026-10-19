@@ -74,3 +74,55 @@ class RouterTests(unittest.TestCase):
                 RouterQuery(query, origin)
         with self.assertRaises(ValueError):
             Router([FakeProvider("claude"), FakeProvider("claude")], lambda _: EVIDENCE)
+
+    def test_journal_reserves_before_provider_and_completes_after(self):
+        events = []
+
+        class Journal:
+            def begin(self, request_id, origin, execute):
+                events.append("begin")
+
+            def complete(self, result, execute):
+                events.append("complete")
+
+            def fail(self, request_id):
+                events.append("fail")
+
+        provider = FakeProvider("claude")
+
+        def retrieve(_):
+            events.append("retrieve")
+            return EVIDENCE
+
+        result = Router([provider], retrieve, Journal()).route(RouterQuery("Diagnóstico"), execute=True)
+        self.assertEqual(events, ["begin", "retrieve", "complete"])
+        self.assertTrue(result["recorded"])
+
+    def test_failed_reservation_prevents_provider_call(self):
+        class Journal:
+            def begin(self, request_id, origin, execute):
+                raise ValueError("Ya registrado")
+
+        provider = FakeProvider("claude")
+        with self.assertRaises(ValueError):
+            Router([provider], lambda _: EVIDENCE, Journal()).route(RouterQuery("Diagnóstico"), execute=True)
+        self.assertFalse(provider.calls)
+
+    def test_failed_persistence_does_not_repeat_generation(self):
+        events = []
+
+        class Journal:
+            def begin(self, request_id, origin, execute): pass
+
+            def complete(self, result, execute):
+                raise RuntimeError("database down")
+
+            def fail(self, request_id):
+                events.append(request_id)
+
+        provider = FakeProvider("claude")
+        query = RouterQuery("Diagnóstico")
+        with self.assertRaises(RuntimeError):
+            Router([provider], lambda _: EVIDENCE, Journal()).route(query, execute=True, allow_fallback=True)
+        self.assertEqual(len(provider.calls), 1)
+        self.assertEqual(events, [query.request_id])

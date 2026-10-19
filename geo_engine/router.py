@@ -2,7 +2,7 @@
 import json
 from dataclasses import dataclass, field
 from typing import Callable, Protocol
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from .contracts import Evidence
 from .providers import ProviderError
@@ -21,6 +21,8 @@ class RouterQuery:
             raise ValueError("query debe contener entre 1 y 4000 caracteres sin NUL")
         if not isinstance(self.origin, str) or not 1 <= len(self.origin) <= 100 or not all(c.isalnum() or c in "_-" for c in self.origin):
             raise ValueError("origin debe ser un identificador de hasta 100 caracteres")
+        if not isinstance(self.request_id, str) or str(UUID(self.request_id)) != self.request_id:
+            raise ValueError("request_id debe ser un UUID canónico")
 
 
 class Provider(Protocol):
@@ -33,14 +35,39 @@ class Provider(Protocol):
     def generate(self, prompt: str) -> str: ...
 
 
+class RunJournal(Protocol):
+    def begin(self, request_id: str, origin: str, execute: bool) -> None: ...
+    def complete(self, result: dict, execute: bool) -> None: ...
+    def fail(self, request_id: str) -> None: ...
+
+
 class Router:
-    def __init__(self, providers: list[Provider], retrieve: Callable[[str], tuple[Evidence, ...]]):
+    def __init__(self, providers: list[Provider], retrieve: Callable[[str], tuple[Evidence, ...]], journal: RunJournal | None = None):
         if len({p.name for p in providers}) != len(providers):
             raise ValueError("Proveedores duplicados")
         self.providers = sorted(providers, key=lambda p: PRIORITY.index(p.name) if p.name in PRIORITY else len(PRIORITY))
         self.retrieve = retrieve
+        self.journal = journal
 
     def route(self, request: RouterQuery, *, execute: bool = False, allow_fallback: bool = False) -> dict:
+        if self.journal:
+            self.journal.begin(request.request_id, request.origin, execute)
+        try:
+            result = self._route(request, execute=execute, allow_fallback=allow_fallback)
+            if self.journal:
+                self.journal.complete(result, execute)
+                result["recorded"] = True
+            return result
+        except Exception:
+            if self.journal:
+                try:
+                    self.journal.fail(request.request_id)
+                except Exception:
+                    # No sustituir el error original si también cayó la conexión de auditoría.
+                    pass
+            raise
+
+    def _route(self, request: RouterQuery, *, execute: bool, allow_fallback: bool) -> dict:
         evidence = self.retrieve(request.query)
         result = {
             "request_id": request.request_id, "origin": request.origin,

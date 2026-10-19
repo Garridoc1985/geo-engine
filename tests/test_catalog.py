@@ -18,7 +18,8 @@ from geo_engine.storage import initialize
 from geo_engine.api import create_server
 from geo_engine.config import Config
 from geo_engine.retrieval import search_public
-from geo_engine.router import Router
+from geo_engine.router import Router, RouterQuery
+from geo_engine.runs import PostgresRunStore
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "catalog.demo.json"
 
@@ -169,7 +170,8 @@ class CatalogPostgreSQLTests(unittest.TestCase):
             def generate(self, prompt):
                 raise AssertionError("El endpoint plan no debe consumir APIs")
 
-        router = Router([UncalledProvider()], lambda text: search_public(self.url, text))
+        store = PostgresRunStore(self.url)
+        router = Router([UncalledProvider()], lambda text: search_public(self.url, text), store)
         server = create_server(Config("127.0.0.1", 0, self.url), router)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -181,6 +183,8 @@ class CatalogPostgreSQLTests(unittest.TestCase):
                     body = json.load(response)
                 self.assertEqual(body["status"], status)
                 self.assertEqual(body["origin"], "perplexity")
+                self.assertTrue(body["recorded"])
+                self.assertEqual(store.get(body["request_id"])["status"], status)
                 if status == "ready":
                     self.assertEqual(body["provider"], "claude")
                     self.assertTrue(body["sources"])
@@ -194,6 +198,37 @@ class CatalogPostgreSQLTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join(timeout=5)
+
+    def test_generated_draft_saved_with_evidence_and_replay_blocked(self):
+        import_catalog(self.url, sample())
+
+        class DemoProvider:
+            name = "claude"
+            model = "test-model"
+            available = True
+            calls = 0
+
+            def generate(self, prompt):
+                self.calls += 1
+                return "Borrador sintético [catalog:demo-01:source]"
+
+        provider = DemoProvider()
+        store = PostgresRunStore(self.url)
+        router = Router([provider], lambda text: search_public(self.url, text), store)
+        request = RouterQuery("diagnóstico comercial", "perplexity")
+        response = router.route(request, execute=True)
+        self.assertEqual(response["status"], "draft")
+        self.assertTrue(response["recorded"])
+        saved = store.get(request.request_id)
+        self.assertEqual(saved["text"], response["text"])
+        self.assertEqual(saved["sources"], response["sources"])
+        self.assertEqual(saved["origin"], "perplexity")
+        self.assertNotIn(request.query, json.dumps(saved))
+        with self.assertRaises(ValueError):
+            router.route(request, execute=True)
+        self.assertEqual(provider.calls, 1)
+        with psycopg.connect(self.url) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM result_evidence WHERE result_id=%s", (request.request_id,)).fetchone()[0], 1)
 
 
 if __name__ == "__main__":
