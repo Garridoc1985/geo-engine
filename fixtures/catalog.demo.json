@@ -1,0 +1,12 @@
+[
+  {"id":"demo-01","kind":"service","title":"Diagnóstico comercial","description":"Servicio ficticio de revisión del proceso comercial.","source_reference":"demo://catalog/demo-01","visibility":"public","allowed_principals":[]},
+  {"id":"demo-02","kind":"service","title":"Organización documental","description":"Servicio ficticio para clasificar documentación empresarial.","source_reference":"demo://catalog/demo-02","visibility":"public","allowed_principals":[]},
+  {"id":"demo-03","kind":"service","title":"Análisis de catálogo","description":"Servicio ficticio para revisar descripciones de productos y servicios.","source_reference":"demo://catalog/demo-03","visibility":"public","allowed_principals":[]},
+  {"id":"demo-04","kind":"service","title":"Preparación de contenido GEO","description":"Servicio ficticio de preparación de borradores con fuentes autorizadas.","source_reference":"demo://catalog/demo-04","visibility":"public","allowed_principals":[]},
+  {"id":"demo-05","kind":"service","title":"Revisión de fuentes","description":"Servicio ficticio para identificar referencias de información empresarial.","source_reference":"demo://catalog/demo-05","visibility":"public","allowed_principals":[]},
+  {"id":"demo-06","kind":"product","title":"Plantilla de catálogo","description":"Producto ficticio para registrar ofertas y sus fuentes.","source_reference":"demo://catalog/demo-06","visibility":"public","allowed_principals":[]},
+  {"id":"demo-07","kind":"product","title":"Plantilla de evidencias","description":"Producto ficticio para registrar referencias y responsables de revisión.","source_reference":"demo://catalog/demo-07","visibility":"public","allowed_principals":[]},
+  {"id":"demo-08","kind":"service","title":"Revisión editorial","description":"Servicio ficticio de revisión humana de borradores empresariales.","source_reference":"demo://catalog/demo-08","visibility":"public","allowed_principals":[]},
+  {"id":"demo-09","kind":"product","title":"Oferta interna de demostración","description":"CONTENIDO_INTERNO_DEMO_09: registro sintético exclusivo del equipo comercial.","source_reference":"demo://catalog/demo-09","visibility":"internal","allowed_principals":["demo-sales"]},
+  {"id":"demo-10","kind":"service","title":"Servicio interno de demostración","description":"CONTENIDO_INTERNO_DEMO_10: registro sintético exclusivo de administración.","source_reference":"demo://catalog/demo-10","visibility":"internal","allowed_principals":["demo-admin"]}
+]
