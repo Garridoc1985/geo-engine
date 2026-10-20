@@ -3,7 +3,9 @@
 ## Contrato
 
 Una consulta normalizada contiene `query` (texto de hasta 4000 caracteres) y `origin`
-(etiqueta de la IA de origen, por ejemplo `claude`, `chatgpt`, `perplexity` u otra).
+(etiqueta del sistema o canal de origen, por ejemplo `claude`, `chatgpt`,
+`perplexity` u otra). `perplexity` identifica al buscador, no a un proveedor de
+generación; es una etiqueta de procedencia y no conecta un servicio de búsqueda.
 El servidor genera un `request_id`. La etiqueta origin no concede permisos ni fija
 el proveedor de destino. En esta versión solo se admite texto y evidencia pública.
 También admite `company_id` y `task` (`auto` por defecto). El paso 5 prepara tareas
@@ -14,9 +16,9 @@ que documento y fragmento sean públicos. Devuelve hasta cinco evidencias ordena
 por relevancia, con fuente e identificadores. Es coincidencia textual, no evaluación
 semántica de suficiencia ni validación automática de afirmaciones.
 
-El router ordena los proveedores elegibles como Claude → ChatGPT → Perplexity;
-los adaptadores adicionales registrados quedan después. Se requiere tanto modelo
-configurado como credencial para considerar un proveedor disponible. No se verifica
+El router prioriza Claude → ChatGPT y reserva las otras IA para adaptadores
+futuros registrados después. Perplexity queda fuera de los proveedores elegibles.
+Se requiere tanto modelo configurado como credencial para considerar un proveedor disponible. No se verifica
 el acceso real a la cuenta hasta ejecutar una petición.
 
 ## Uso local sin consumir APIs
@@ -43,8 +45,9 @@ arbitrarios. No tiene autenticación productiva ni se expone fuera de loopback.
 
 ## Ejecución explícita
 
-Configurar por entorno las parejas `CLAUDE_MODEL`/`ANTHROPIC_API_KEY`,
-`OPENAI_MODEL`/`OPENAI_API_KEY`, `PERPLEXITY_MODEL`/`PERPLEXITY_API_KEY`.
+Configurar por entorno las parejas `CLAUDE_MODEL`/`ANTHROPIC_API_KEY` y
+`OPENAI_MODEL`/`OPENAI_API_KEY`. Perplexity no tiene configuración de generación
+ni es un valor admitido por `--provider`.
 No se fijan modelos concretos ni se cargan automáticamente archivos `.env`.
 Las credenciales nunca se imprimen en la respuesta ni se guardan en el repositorio.
 
@@ -115,4 +118,5 @@ Pendientes: autenticación para ejecución remota, validación de citas/suficien
 revisión y aprobación editorial, más organizaciones, adaptadores de entrada y despliegue.
 
 La entrada JSON es común para cualquier IA capaz de usar HTTP; no instala conectores
-ni MCP automáticamente en las aplicaciones de Claude, ChatGPT o Perplexity.
+ni MCP automáticamente en Claude o ChatGPT ni una conexión con el buscador
+Perplexity. Su canal de descubrimiento sigue pendiente de implementación.

@@ -124,11 +124,22 @@ class ChatGPTOnlyTests(unittest.TestCase):
     def test_default_selection_preserves_priority_candidates(self):
         with patch.dict(os.environ, ENV, clear=True):
             providers = build_providers_from_env(only=None)
-        self.assertEqual([provider.name for provider in providers], ["claude", "chatgpt", "perplexity"])
+        self.assertEqual([provider.name for provider in providers], ["claude", "chatgpt"])
         self.assertTrue(all(provider.available for provider in providers))
 
 
 class ChatGPTOnlyCLITests(unittest.TestCase):
+    def test_cli_rejects_search_engine_as_provider_before_database_or_transport(self):
+        with patch("sys.argv", ["geo-engine", "route", "consulta", "--provider", "perplexity"]), \
+             patch("geo_engine.cli.Config.from_env") as config, \
+             patch("geo_engine.providers.urlopen") as transport, \
+             contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as caught:
+                main()
+        self.assertEqual(caught.exception.code, 2)
+        config.assert_not_called()
+        transport.assert_not_called()
+
     def test_route_and_geo_pass_explicit_provider_selection_to_factory(self):
         for command in ("route", "geo"):
             for execute in (False, True):

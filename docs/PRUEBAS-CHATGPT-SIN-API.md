@@ -19,8 +19,9 @@ Consulta + empresa + tarea
 
 Las pruebas usan claves y modelos ficticios dentro de su entorno aislado. Se
 sustituye el transporte HTTP, de modo que no se realiza ninguna solicitud al
-servicio OpenAI. Claude y Perplexity no se construyen ni se usan en el modo
-exclusivo, incluso si aparecen configurados en el entorno de pruebas.
+servicio OpenAI. Claude no se construye ni se usa en el modo exclusivo, incluso
+si aparece configurado en el entorno de pruebas. Perplexity se clasifica como
+buscador y no forma parte de los adaptadores de generación.
 
 Se cubren respuesta directa, perfil y preguntas frecuentes; ausencia de
 configuración; errores temporales sin cambio de proveedor; exclusión de datos
@@ -42,7 +43,7 @@ La CLI incorpora selección explícita de proveedor para preparar pruebas aislad
 
 Este comando sólo planifica por defecto. Sin configuración devuelve `no_provider`
 y conserva el contexto y la tarea seleccionados. La opción `--provider auto`
-mantiene el orden general Claude → ChatGPT → Perplexity para usos posteriores.
+mantiene el orden general Claude → ChatGPT → otras IA futuras para usos posteriores.
 
 Estas pruebas no usan `--execute` contra proveedores reales. La prueba de
 integración sí ejercita la ruta de ejecución, pero con el transporte simulado.

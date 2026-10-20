@@ -1,14 +1,13 @@
 # Adaptadores HTTP del router
 
 19 de octubre de 2026. Cada adaptador envía una única petición de texto. El router
-elige un proveedor elegible en el orden Claude → ChatGPT → Perplexity y decide si
+elige un proveedor elegible en el orden Claude → ChatGPT → otras IA futuras y decide si
 corresponde fallback. Este módulo no hace reintentos ni llamadas a varios proveedores.
 
 | Proveedor del router | API oficial | Clave | Modelo explícito |
 | --- | --- | --- | --- |
 | `claude` | `POST https://api.anthropic.com/v1/messages` | `ANTHROPIC_API_KEY` | `CLAUDE_MODEL` |
 | `chatgpt` | `POST https://api.openai.com/v1/responses` | `OPENAI_API_KEY` | `OPENAI_MODEL` |
-| `perplexity` | `POST https://api.perplexity.ai/v1/agent` | `PERPLEXITY_API_KEY` | `PERPLEXITY_MODEL` |
 
 Las variables se definen en Ubuntu y no se imprimen ni guardan en el repositorio.
 Una clave sin modelo, o un modelo sin clave, deja el adaptador no disponible.
@@ -21,9 +20,8 @@ nombre de prioridad indicado por el propietario; la ejecución usa OpenAI API y 
 facturación, no una sesión del producto ChatGPT.
 
 El propietario debe elegir identificadores vigentes disponibles en sus cuentas.
-En Perplexity, `PERPLEXITY_MODEL` corresponde al campo `model` de Agent API, no a un
-preset ni a un nombre de suscripción. Agent API puede ejecutar modelos de terceros;
-que el proveedor sea Perplexity no identifica por sí solo la familia del modelo.
+Los adaptadores implementados de generación son `claude` y `chatgpt`; las otras IA
+son una extensión futura. Perplexity queda fuera de esta selección.
 
 ## Contratos y límites
 
@@ -47,8 +45,8 @@ son errores transitorios; el router conserva la decisión final sobre fallback.
 
 Solo hay destinos HTTPS oficiales fijados en código. Los redirects están
 bloqueados para no reenviar claves a otro destino. No se registran cuerpos de
-error HTTP, prompts ni claves. Las respuestas tienen límite de 2 MB. OpenAI y
-Perplexity reciben `store: false`; eso controla visibilidad mediante recuperación,
+error HTTP, prompts ni claves. Las respuestas tienen límite de 2 MB. OpenAI
+recibe `store: false`; eso controla visibilidad mediante recuperación,
 no constituye una promesa de ausencia total de retención del proveedor.
 
 No se habilitan herramientas web, MCP ni búsqueda externa en estos adaptadores.
@@ -56,14 +54,17 @@ El prompt debe llegar al adaptador después de la selección de evidencia públi
 y los controles de acceso del router. No se envía evidencia interna mediante este
 incremento. Las pruebas usan respuestas HTTP simuladas; no consumen APIs pagadas.
 
-## Decisión de Perplexity
+## Clasificación de Perplexity
 
-Para proyectos nuevos, la documentación vigente recomienda Agent API. El soporte
-de Sonar Chat Completions terminó el 27 de septiembre de 2026; sus solicitudes
-síncronas antiguas se reformulan gradualmente como Agent API. Por eso no se adopta
-el endpoint heredado `/chat/completions` ni `/v1/sonar`. El endpoint usado es
-`/v1/agent`, que acepta `model`, `input`, `max_output_tokens` y `store`, y devuelve
-una lista tipada `output` compatible con Responses.
+Por decisión de producto del 20 de octubre de 2026, Perplexity es un buscador y
+canal de descubrimiento futuro. No es un proveedor de generación del router y
+no tiene adaptador `HTTPProvider`, selector `--provider` ni configuración de
+modelo/clave para generación. No hay conexión de búsqueda activa ni un
+adaptador de búsqueda implementado.
+
+`origin=perplexity` se conserva como etiqueta de procedencia de una consulta.
+Es independiente del proveedor que genere el borrador; no activa llamadas
+al buscador. Una integración futura requerirá su propio contrato y validación.
 
 Documentación oficial verificada el 19 de octubre de 2026:
 
@@ -71,6 +72,3 @@ Documentación oficial verificada el 19 de octubre de 2026:
   [Messages: request and response](https://platform.claude.com/docs/en/build-with-claude/working-with-messages).
 - [OpenAI: text generation](https://developers.openai.com/api/docs/guides/text),
   [Responses: create](https://developers.openai.com/api/reference/resources/responses/methods/create).
-- [Perplexity: Agent API](https://docs.perplexity.ai/docs/agent-api/quickstart),
-  [compatibilidad Responses](https://docs.perplexity.ai/docs/agent-api/openai-compatibility),
-  [migración desde Sonar](https://docs.perplexity.ai/docs/agent-api/migrate-from-sonar/overview).

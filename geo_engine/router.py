@@ -4,11 +4,12 @@ from dataclasses import dataclass, field
 from typing import Callable, Protocol
 from uuid import UUID, uuid4
 
+from .channels import GENERATION_PROVIDERS, SEARCH_ENGINES
 from .contracts import Evidence
 from .providers import ProviderError
 from .pipeline import TASKS, build_prompt, interpret_query, select_context
 
-PRIORITY = ("claude", "chatgpt", "perplexity")
+PRIORITY = GENERATION_PROVIDERS
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,8 @@ class RunJournal(Protocol):
 
 class Router:
     def __init__(self, providers: list[Provider], retrieve: Callable[..., tuple[Evidence, ...]], journal: RunJournal | None = None, domain_retrieve: Callable[[str, str], tuple[Evidence, ...]] | None = None):
+        if any(p.name.casefold() in SEARCH_ENGINES for p in providers):
+            raise ValueError("Un buscador no puede registrarse como proveedor de generación")
         if len({p.name for p in providers}) != len(providers):
             raise ValueError("Proveedores duplicados")
         self.providers = sorted(providers, key=lambda p: PRIORITY.index(p.name) if p.name in PRIORITY else len(PRIORITY))

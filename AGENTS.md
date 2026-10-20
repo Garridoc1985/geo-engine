@@ -26,3 +26,9 @@ propietario después de validar el flujo simulado. Comenzar solo con ChatGPT y
 contenido público ficticio; conservar la prioridad general del router. No guardar
 claves ni trasladar sesiones de ChatGPT al proyecto. Las pruebas automatizadas
 siguen usando transporte simulado y no consumen APIs reales.
+
+Clasificación vigente por directiva del propietario: Perplexity es un buscador y
+canal de descubrimiento futuro, no un proveedor de generación del router.
+La prioridad auxiliar es Claude → ChatGPT → otras IA futuras. `origin=perplexity`
+solo etiqueta el canal de origen y no selecciona proveedor ni activa búsquedas.
+No hay conexión de búsqueda de Perplexity implementada.

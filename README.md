@@ -3,10 +3,12 @@
 Repositorio: https://github.com/Garridoc1985/geo-engine (privado, rama `main`).
 
 GEO Engine prepara información empresarial verificable para consumo por sistemas
-de IA como Claude, ChatGPT y Perplexity. Desarrollo y evolución de arquitectura
+de IA como Claude y ChatGPT, y por canales de descubrimiento como el buscador
+Perplexity. En el producto, Perplexity no es un proveedor de generación y su canal
+de búsqueda todavía no tiene conexión activa. Desarrollo y evolución de arquitectura
 habilitados: [definición vigente](docs/PRODUCTO-Y-ARQUITECTURA.md).
 El objetivo es distribución y recuperación por IA; la base inicial no representa
-todavía una integración activa con esos proveedores.
+todavía una integración activa de descubrimiento con esos sistemas y canales.
 
 Base ARQ-01 del Sprint 01, preparada para Ubuntu 24.04 y Python 3.12+.
 Usa PostgreSQL y Psycopg 3; no requiere proveedor de IA todavía.
@@ -72,7 +74,7 @@ export DATABASE_URL=postgresql:///geo_engine
 - `catalog.py`: validación de catálogos y persistencia transaccional en PostgreSQL.
 - `cli.py`: entrada de importación desde terminal Ubuntu.
 - `retrieval.py`: recuperación textual PostgreSQL de evidencia pública.
-- `router.py`: planificación y ejecución con prioridad Claude → ChatGPT → Perplexity.
+- `router.py`: planificación y ejecución con prioridad Claude → ChatGPT → otras IA futuras.
 - `pipeline.py`: interpretación de tareas GEO y preparación de contexto y formato.
 - `providers.py`: adaptadores HTTP y configuración por entorno.
 - `runs.py`: registro PostgreSQL de ejecuciones, borradores y fuentes.
@@ -179,8 +181,9 @@ no conecta proveedores ni publica el catálogo sintético en Internet.
 .venv/bin/python -m geo_engine.cli route "diagnóstico comercial" --origin perplexity
 ```
 
-Planifica sin llamadas externas. Para generar se necesitan claves/modelos y la
-opción explícita `--execute`. [Contrato, configuración y límites](docs/ROUTER.md).
+Planifica sin llamadas externas. `--origin perplexity` etiqueta el buscador de
+origen; no selecciona proveedor ni ejecuta una búsqueda. Para generar se necesitan
+claves/modelos y la opción explícita `--execute`. [Contrato, configuración y límites](docs/ROUTER.md).
 
 Para revisar un registro local, usar el ID devuelto:
 
