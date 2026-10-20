@@ -1,13 +1,17 @@
 # GEO Engine — definición vigente y desarrollo habilitado
 
 19 de octubre de 2026. Directiva explícita del propietario en esta conversación.
+Clasificación de Perplexity actualizada el 20 de octubre de 2026.
 Este documento prevalece sobre el alcance inicial del sprint en caso de conflicto.
 
 ## Propósito
 
 Preparar, verificar y entregar conocimiento empresarial para que sistemas de IA,
-incluidos Claude, ChatGPT y Perplexity, puedan descubrirlo, recuperarlo y citarlo.
-El consumidor objetivo es un sistema de IA. Una interfaz de preguntas para usuarios
+como Claude y ChatGPT, y buscadores como Perplexity, puedan descubrirlo, recuperarlo
+y citarlo. Perplexity se clasifica como buscador y canal de descubrimiento del
+producto; no participa como proveedor de generación. Su conexión de búsqueda es
+futura y todavía no está implementada.
+El consumidor objetivo es un sistema de IA o un canal de descubrimiento. Una interfaz de preguntas para usuarios
 no constituye el producto ni es necesaria para iniciar su desarrollo.
 
 La información debe representar hechos de la empresa y conservar fuentes. No se
@@ -51,7 +55,8 @@ Fuentes empresariales → ingesta → PostgreSQL → validación y procedencia
 
 Separar dos vías: contenido web público para descubrimiento y adaptadores/herramientas
 para acceso explícito de agentes. Un endpoint propio no instala una integración en
-Claude, ChatGPT o Perplexity. Cada canal deberá implementarse y validarse por separado.
+Claude o ChatGPT, ni una conexión con el buscador Perplexity. Cada canal deberá
+implementarse y validarse por separado.
 
 ## Primer desarrollo alineado
 
@@ -67,23 +72,24 @@ La exposición externa requiere decidir dominio, despliegue y datos aprobados.
 
 ## Router de IA — jerarquía indicada por el propietario
 
-Orden vigente: **Claude → ChatGPT → Perplexity → otras IA**.
-Son familias de proveedores, no identificadores concretos de modelos API.
+Orden vigente: **Claude → ChatGPT → otras IA futuras**.
+Es la prioridad de proveedores de generación auxiliar, no de canales de
+descubrimiento ni de modelos API concretos. Perplexity queda fuera de este router.
 
 | Prioridad | Proveedor | Participación |
 | --- | --- | --- |
 | 1 | Claude | Primera opción para las consultas compatibles y autorizadas |
 | 2 | ChatGPT | Segunda opción según compatibilidad y política de enrutamiento |
-| 3 | Perplexity | Tercera opción según compatibilidad y política de enrutamiento |
-| 4 | Otras IA | Adaptadores futuros posteriores a las tres prioritarias |
+| 3 | Otras IA futuras | Adaptadores de generación que se incorporen después de Claude y ChatGPT |
 
-El router recibe consultas de distintos sistemas de IA, normaliza su formato,
+El router recibe consultas con una etiqueta de origen, normaliza su formato,
 identifica la tarea y los permisos, recupera evidencia autorizada y adapta el
-mensaje y la respuesta al proveedor elegido. La IA que origina una consulta y el
-proveedor que la procesa son conceptos independientes.
+mensaje y la respuesta al proveedor elegido. El sistema o buscador de origen y el
+proveedor de generación son conceptos independientes. `origin=perplexity` registra
+el buscador de origen; no selecciona Perplexity para generar ni inicia búsquedas.
 
 La prioridad se aplica entre proveedores elegibles. Una consulta no debe enviarse
-a los tres automáticamente. No se asignan especialidades fijas por marca sin
+a varios proveedores automáticamente. No se asignan especialidades fijas por marca sin
 verificar capacidades. El cambio de proveedor ante un error o incompatibilidad
 se regirá por una política explícita, preservando confidencialidad y trazabilidad.
 

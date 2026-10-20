@@ -7,6 +7,7 @@ from pathlib import Path
 
 import psycopg
 from .catalog import load_catalog, save_catalog
+from .channels import GENERATION_PROVIDERS
 from .config import Config
 from .storage import initialize
 from .router import Router, RouterQuery
@@ -29,10 +30,10 @@ def main() -> int:
     for name in ("route", "geo"):
         route = commands.add_parser(name, help="Pipeline GEO; por defecto planifica sin consumir APIs")
         route.add_argument("query")
-        route.add_argument("--origin", default="generic", help="Etiqueta de IA de origen, sin privilegios de acceso")
+        route.add_argument("--origin", default="generic", help="Canal de origen (IA o buscador), sin privilegios de acceso")
         route.add_argument("--company", dest="company_id", required=name == "geo", help="Empresa cuyo conocimiento se utiliza")
         route.add_argument("--task", choices=("auto", *TASKS), default="auto", help="Detectar tarea o indicar una explícitamente")
-        route.add_argument("--provider", choices=("auto", "claude", "chatgpt", "perplexity"), default="auto", help="Restringir a un proveedor; auto conserva la prioridad general")
+        route.add_argument("--provider", choices=("auto", *GENERATION_PROVIDERS), default="auto", help="Restringir a un proveedor; auto conserva la prioridad general")
         route.add_argument("--execute", action="store_true", help="Enviar consulta y contexto al proveedor (puede generar cargos)")
         route.add_argument("--allow-fallback", action="store_true", help="Tras fallo temporal, permitir siguiente proveedor configurado")
         route.add_argument("--request-id", help="UUID estable para impedir repetir una ejecución ya reservada")

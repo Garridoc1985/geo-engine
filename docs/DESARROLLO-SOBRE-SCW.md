@@ -17,7 +17,7 @@ clients/<empresa>/evidence_registry.md → evidence/*.md
                       ↓
           recuperación pública por empresa
                       ↓
-          router Claude → ChatGPT → Perplexity
+          router Claude → ChatGPT → otras IA futuras
 ```
 
 Se reutiliza la estructura de conocimiento empresarial y registro de evidencias
@@ -41,7 +41,9 @@ Desde la raíz del proyecto, con PostgreSQL y el entorno Python preparados:
 
 La primera orden importa el perfil, productos/servicios, contexto interno y evidencia
 vigente de una empresa ficticia. La segunda recupera sólo información pública de
-esa empresa y planifica el proveedor sin consumir APIs.
+esa empresa y planifica el proveedor de generación sin consumir APIs.
+`--origin perplexity` solo etiqueta el buscador de origen; no lo selecciona como
+proveedor ni implementa una conexión de búsqueda.
 Sin modelos y credenciales configurados, conserva las fuentes y devuelve `no_provider`.
 Con los proveedores configurados se puede ejecutar usando la opción existente
 `--execute`, que puede generar cargos y no se utilizó para la demostración.

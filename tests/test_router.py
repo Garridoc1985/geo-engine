@@ -24,7 +24,7 @@ class FakeProvider:
 
 class RouterTests(unittest.TestCase):
     def test_priority_independent_of_input_order_and_origin(self):
-        providers = [FakeProvider("perplexity"), FakeProvider("chatgpt"), FakeProvider("claude")]
+        providers = [FakeProvider("other_ai"), FakeProvider("chatgpt"), FakeProvider("claude")]
         for origin in ("claude", "chatgpt", "perplexity", "another_ai"):
             response = Router(providers, lambda _: EVIDENCE).route(RouterQuery("Diagnóstico", origin))
             self.assertEqual(response["provider"], "claude")
@@ -33,7 +33,7 @@ class RouterTests(unittest.TestCase):
         self.assertTrue(all(not p.calls for p in providers))
 
     def test_unconfigured_skipped_and_first_success_stops(self):
-        providers = [FakeProvider("claude", available=False), FakeProvider("chatgpt"), FakeProvider("perplexity")]
+        providers = [FakeProvider("claude", available=False), FakeProvider("chatgpt"), FakeProvider("other_ai")]
         response = Router(providers, lambda _: EVIDENCE).route(RouterQuery("Diagnóstico"), execute=True)
         self.assertEqual(response["provider"], "chatgpt")
         self.assertEqual(response["status"], "draft")
@@ -41,6 +41,14 @@ class RouterTests(unittest.TestCase):
         self.assertFalse(providers[2].calls)
         self.assertIn("demo://public", providers[1].calls[0])
         self.assertEqual(response["sources"][0]["source_id"], "s1")
+
+    def test_search_engine_cannot_be_registered_as_generation_fallback(self):
+        for name in ("perplexity", "Perplexity"):
+            with self.subTest(name=name):
+                search = FakeProvider(name)
+                with self.assertRaisesRegex(ValueError, "buscador"):
+                    Router([FakeProvider("claude"), search], lambda _: EVIDENCE)
+                self.assertFalse(search.calls)
 
     def test_no_evidence_means_no_call(self):
         provider = FakeProvider("claude")

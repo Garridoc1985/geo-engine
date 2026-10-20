@@ -2,8 +2,9 @@
 
 19 de octubre de 2026. El propietario autorizó comenzar con APIs después de la
 validación local. Se inicia con el proveedor `chatgpt`, que usa OpenAI Responses.
-La prioridad automática Claude → ChatGPT → Perplexity se mantiene; estas pruebas
-seleccionan exclusivamente ChatGPT.
+La prioridad automática Claude → ChatGPT → otras IA futuras se mantiene; estas pruebas
+seleccionan exclusivamente ChatGPT. Perplexity se clasifica como buscador y
+canal de descubrimiento futuro, sin conexión activa; queda fuera de la generación.
 
 ## Estado verificado
 

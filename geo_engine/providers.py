@@ -18,7 +18,6 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 _ENDPOINTS = {
     "claude": "https://api.anthropic.com/v1/messages",
     "chatgpt": "https://api.openai.com/v1/responses",
-    "perplexity": "https://api.perplexity.ai/v1/agent",
 }
 _MAX_RESPONSE_BYTES = 2_000_000
 
@@ -183,7 +182,6 @@ def build_providers_from_env(only: str | None = None) -> list[HTTPProvider]:
     if only is not None and (not isinstance(only, str) or only not in _ENDPOINTS):
         raise ValueError("Proveedor no admitido")
     settings = (("claude", "CLAUDE_MODEL", "ANTHROPIC_API_KEY"),
-                ("chatgpt", "OPENAI_MODEL", "OPENAI_API_KEY"),
-                ("perplexity", "PERPLEXITY_MODEL", "PERPLEXITY_API_KEY"))
+                ("chatgpt", "OPENAI_MODEL", "OPENAI_API_KEY"))
     return [HTTPProvider(name, os.getenv(model, "").strip(), os.getenv(key, "").strip())
             for name, model, key in settings if only is None or name == only]

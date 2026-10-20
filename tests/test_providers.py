@@ -48,9 +48,8 @@ class ProviderTests(unittest.TestCase):
         })
         self.assertEqual(call.kwargs, {"timeout": 30.0})
 
-    def test_openai_and_perplexity_use_current_endpoints_and_typed_outputs(self):
-        for name, endpoint in [("chatgpt", "https://api.openai.com/v1/responses"),
-                               ("perplexity", "https://api.perplexity.ai/v1/agent")]:
+    def test_openai_uses_responses_endpoint_and_typed_outputs(self):
+        for name, endpoint in [("chatgpt", "https://api.openai.com/v1/responses")]:
             with self.subTest(provider=name):
                 provider = HTTPProvider(name, "configured-model", "dummy-test-key")
                 text, call = self.call_with_response(provider, responses_payload())
@@ -66,7 +65,7 @@ class ProviderTests(unittest.TestCase):
     def test_configuration_requires_both_key_and_model(self):
         with patch.dict(os.environ, {}, clear=True):
             providers = build_providers_from_env()
-        self.assertEqual([provider.name for provider in providers], ["claude", "chatgpt", "perplexity"])
+        self.assertEqual([provider.name for provider in providers], ["claude", "chatgpt"])
         self.assertTrue(all(not provider.available for provider in providers))
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}, clear=True):
             self.assertFalse(build_providers_from_env()[0].available)
@@ -80,6 +79,17 @@ class ProviderTests(unittest.TestCase):
                 HTTPProvider("chatgpt", "", "").generate("consulta")
             self.assertEqual(caught.exception.code, "not_configured")
             transport.assert_not_called()
+
+    def test_perplexity_settings_never_enable_a_generation_provider(self):
+        env = {"PERPLEXITY_MODEL": "legacy-model", "PERPLEXITY_API_KEY": "dummy-key"}
+        with patch.dict(os.environ, env, clear=True), patch("geo_engine.providers.urlopen") as transport:
+            self.assertTrue(all(not provider.available for provider in build_providers_from_env()))
+            with self.assertRaises(ValueError):
+                build_providers_from_env(only="perplexity")
+            with self.assertRaises(ProviderError) as caught:
+                HTTPProvider("perplexity", "legacy-model", "dummy-key")
+            self.assertEqual(caught.exception.code, "unsupported_provider")
+        transport.assert_not_called()
 
     def test_http_errors_are_safe_and_only_transient_errors_retryable(self):
         for status, retryable in [(400, False), (401, False), (403, False), (404, False),
@@ -123,7 +133,7 @@ class ProviderTests(unittest.TestCase):
         payload["output"][1]["content"].append({"type": "refusal", "refusal": "sensitive refusal"})
         for provider, response, code in [
             ("chatgpt", payload, "refused"),
-            ("perplexity", {"status": "incomplete", "output": []}, "incomplete_response"),
+            ("chatgpt", {"status": "incomplete", "output": []}, "incomplete_response"),
             ("claude", {"stop_reason": "refusal", "content": []}, "refused"),
             ("claude", {"stop_reason": "max_tokens", "content": []}, "incomplete_response"),
         ]:

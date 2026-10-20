@@ -43,7 +43,7 @@ class ProviderAccessCheckTests(unittest.TestCase):
                 transport.assert_not_called()
 
     def test_other_providers_cannot_use_openai_access_check(self):
-        for name in ("claude", "perplexity"):
+        for name in ("claude",):
             with self.subTest(provider=name), patch("geo_engine.providers.urlopen") as transport:
                 with self.assertRaises(ProviderError) as caught:
                     HTTPProvider(name, "dummy-model", "dummy-private-key").check_model_access()

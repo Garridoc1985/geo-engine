@@ -3,13 +3,13 @@
 ## Recorrido implementado
 
 ```text
-Consulta de una IA + empresa + tarea opcional
+Consulta + canal de origen + empresa + tarea opcional
     → interpretar tarea
     → extraer términos de búsqueda
     → recuperar conocimiento público de esa empresa
     → complementar con los dominios SCW pertinentes
     → preparar contexto y formato de respuesta
-    → router Claude → ChatGPT → Perplexity
+    → router Claude → ChatGPT → otras IA futuras
     → registrar tarea, estado, fuentes y resultado en PostgreSQL
 ```
 
@@ -72,8 +72,10 @@ curl --fail http://127.0.0.1:8000/v1/geo/plan \
 ```
 
 `company_id` es obligatorio en esta nueva entrada. `task` admite `auto` o las cinco
-tareas de la tabla. `origin` identifica al solicitante y no cambia prioridades ni
-concede permisos. El endpoint planifica y nunca llama a proveedores.
+tareas de la tabla. `origin` identifica al sistema o canal de origen y no cambia
+prioridades ni concede permisos. `origin=perplexity` etiqueta al buscador; no es
+una selección de proveedor ni una llamada de búsqueda. No hay conexión activa
+con Perplexity. El endpoint planifica y nunca llama a proveedores.
 La API local anterior `/v1/router/plan` conserva compatibilidad y acepta task.
 
 ## Registro y alcance
