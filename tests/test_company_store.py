@@ -121,7 +121,7 @@ class CompanyStoreTests(unittest.TestCase):
 
             def generate(self, prompt):
                 self.prompt = prompt
-                return "Aurora ofrece mantenimiento predictivo industrial."
+                return "GEO Engine ofrece mantenimiento predictivo industrial."
 
         provider = DemoProvider()
         store = PostgresRunStore(self.url)
@@ -129,12 +129,46 @@ class CompanyStoreTests(unittest.TestCase):
         result = router.route(RouterQuery("mantenimiento predictivo", "perplexity", company_id="demo_company"), execute=True)
         self.assertEqual(result["status"], "draft")
         self.assertEqual(result["company_id"], "demo_company")
-        self.assertIn("Aurora", provider.prompt)
+        self.assertIn("GEO Engine", provider.prompt)
         self.assertNotIn("MARCADOR_INTERNO", provider.prompt)
         self.assertNotIn("MARCADOR_RETIRADO", provider.prompt)
         saved = store.get(result["request_id"])
         self.assertEqual(saved["company_id"], "demo_company")
         self.assertEqual(saved["text"], result["text"])
+
+    def test_revisions_replace_public_snapshot_and_preserve_history(self):
+        old = KnowledgeRecord("domain:products_services", "Servicio", "MARCADOR_ANTIGUO", "https://example.com/old", "public", ())
+        new = replace(old, content="MARCADOR_NUEVO", reference="https://example.com/new")
+        import_company(self.url, "demo_company", (old,))
+        before = read_public_catalog(self.url, company_id="demo_company")["items"]
+        result = import_company(self.url, "demo_company", (new,), allow_revisions=True)
+        self.assertEqual(result["deactivated"], 1)
+        self.assertEqual(result["imported"], 1)
+        current = read_public_catalog(self.url, company_id="demo_company")["items"]
+        self.assertEqual(len(current), 1)
+        self.assertNotEqual(before[0]["document_id"], current[0]["document_id"])
+        self.assertIn("MARCADOR_NUEVO", str(current))
+        self.assertNotIn("MARCADOR_ANTIGUO", str(read_public_catalog(self.url)))
+        repeated = import_company(self.url, "demo_company", (new,), allow_revisions=True)
+        self.assertEqual(repeated["imported"], 0)
+        self.assertEqual(repeated["deactivated"], 0)
+        with psycopg.connect(self.url) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM documents").fetchone()[0], 2)
+
+    def test_revision_permission_change_and_restore_reuse_immutable_content(self):
+        record = KnowledgeRecord("domain:products_services", "Servicio", "Servicio verificable", "https://example.com/service", "public", ())
+        import_company(self.url, "demo_company", (record,), allow_revisions=True)
+        private = replace(record, visibility="internal")
+        result = import_company(self.url, "demo_company", (private,), allow_revisions=True)
+        self.assertEqual(result["imported"], 0)
+        self.assertEqual(read_public_catalog(self.url)["items"], [])
+        newer = replace(record, content="Servicio actualizado")
+        import_company(self.url, "demo_company", (newer,), allow_revisions=True)
+        restored = import_company(self.url, "demo_company", (record,), allow_revisions=True)
+        self.assertEqual(restored["imported"], 0)
+        self.assertEqual(len(read_public_catalog(self.url)["items"]), 1)
+        with psycopg.connect(self.url) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM documents").fetchone()[0], 2)
 
     def test_http_plan_accepts_company_scope(self):
         import_company(self.url, "demo_company", self.records)

@@ -21,11 +21,19 @@ El producto entrega conocimiento a sistemas de IA; no requiere una interfaz de
 consultas para usuarios. Publicación, descubrimiento y medición están habilitados
 para desarrollo. Mantener controles de confidencialidad y autenticación.
 
-Etapa actual: iniciar integración API real con OpenAI, por autorización del
-propietario después de validar el flujo simulado. Comenzar solo con ChatGPT y
-contenido público ficticio; conservar la prioridad general del router. No guardar
-claves ni trasladar sesiones de ChatGPT al proyecto. Las pruebas automatizadas
-siguen usando transporte simulado y no consumen APIs reales.
+Directiva vigente del propietario: el producto busca visibilidad empresarial en
+respuestas de IA (GEO), empezando por ChatGPT. No es una interfaz de preguntas
+para el usuario ni un servicio de SEO tradicional o publicidad Google. El desarrollo
+alimenta una capa backend que publica conocimiento autorizado en HTML, CMS o
+servidor, con evolución y actualización controladas. No prometer indexación o citas.
+
+Etapa actual: desarrollar publicación y descubrimiento. La generación real por
+OpenAI y su persistencia ya se validaron manualmente con gpt-4.1-mini y gpt-6.1-sol;
+esa conexión es auxiliar y no acredita descubrimiento ni posicionamiento externo.
+El propietario autorizó usar DG Medios y Vector Bikes: solo su selección pública corroborada,
+fuera del repositorio, sin trasladar notas internas de SCW. No guardar claves ni
+sesiones de ChatGPT. La prioridad del router se conserva para generación auxiliar;
+el primer canal de descubrimiento es ChatGPT. Pruebas automatizadas sin APIs reales.
 
 Clasificación vigente por directiva del propietario: Perplexity es un buscador y
 canal de descubrimiento futuro, no un proveedor de generación del router.

@@ -1,4 +1,4 @@
 # Productos y servicios ficticios
 
-Aurora ofrece mantenimiento predictivo industrial para equipos de fabricación.
+GEO Engine ofrece mantenimiento predictivo industrial para equipos de fabricación.
 Su servicio ficticio incluye monitoreo de vibraciones y diagnóstico de equipos.
