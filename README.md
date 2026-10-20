@@ -254,7 +254,7 @@ Conserva historia y activa el snapshot completo importado, sin publicar remotame
 
 ## Estado de entrega — 20 de octubre de 2026
 
-Suite local: 158 pruebas aprobadas con PostgreSQL, sin APIs externas.
+Suite local: 168 pruebas aprobadas con PostgreSQL, sin APIs externas.
 No existe un comando `sync-catalog` en esta versión. El contrato operativo para
 snapshots empresariales es `company_store.import_company(..., allow_revisions=True)`:
 recibe una tupla completa de `KnowledgeRecord` por empresa; omitir registros los
@@ -262,8 +262,9 @@ retira de la selección activa. No entregar un snapshot parcial tras un fallo de
 lectura, porque retiraría registros válidos. La CLI correspondiente es
 `ingest-company --workspace RUTA --allow-revisions`, que carga la estructura SCW.
 
-El lector de páginas públicas aún no está implementado. Deberá conservar fuentes,
-limitarse a páginas expresamente autorizadas y excluir rutas de clientes, órdenes
-y usuarios. No necesita el código del sitio para obtener páginas públicas.
+El lector `read-public-web` captura URLs públicas expresamente autorizadas y
+prepara un snapshot SCW para revisión, conservando fuentes y excluyendo rutas
+de clientes, órdenes y usuarios. No necesita el código del sitio ni escribe
+automáticamente en PostgreSQL. [Contrato y uso](docs/LECTOR-WEB-PUBLICA.md).
 WordPress es el primer adaptador de publicación previsto; Durable es el destino
 particular previsto para Vector Bikes. Ninguno tiene despliegue automático activo.

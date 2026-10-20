@@ -19,11 +19,15 @@ from .company_knowledge import CompanyKnowledge
 from .company_store import import_company
 from .publication import build_publication, export_publication, create_publication_server
 from .integration import build_integration_bundle, export_integration
+from .web_reader import read_public_web
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="GEO Engine: ingesta y router de IA")
     commands = parser.add_subparsers(dest="command", required=True)
+    reader = commands.add_parser("read-public-web", help="Leer URLs públicas autorizadas y preparar un snapshot SCW para revisión")
+    reader.add_argument("--manifest", type=Path, required=True)
+    reader.add_argument("--output", type=Path, required=True, help="Directorio nuevo del workspace de revisión")
     ingest = commands.add_parser("ingest", help="Importar catálogo JSON o CSV")
     ingest.add_argument("path", type=Path)
     company = commands.add_parser("ingest-company", help="Importar conocimiento empresarial con estructura SCW")
@@ -57,6 +61,9 @@ def main() -> int:
     check_mode.add_argument("--list-models", action="store_true", help="Listar modelos visibles para la clave OpenAI")
     args = parser.parse_args()
     try:
+        if args.command == "read-public-web":
+            print(json.dumps(read_public_web(args.manifest, args.output), ensure_ascii=False))
+            return 0
         if args.command == "check-provider":
             provider = build_providers_from_env(only=args.provider)[0]
             if args.list_models:

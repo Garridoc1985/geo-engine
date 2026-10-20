@@ -149,3 +149,10 @@ inmutables con activación transaccional del snapshot empresarial mediante
 `ingest-company --allow-revisions`. No requiere cambiar el esquema PostgreSQL;
 las revisiones se representan en IDs derivados del contenido y la fuente.
 Contrato y límites en `ACTUALIZACION-CONOCIMIENTO.md`.
+
+
+Incremento del 20 de octubre: `web_reader.py` incorpora captura explícita de URLs
+públicas HTTPS a snapshots SCW revisables. Usa conexión fijada a una IP global
+validada y TLS del dominio, sin redirecciones, cookies, crawling ni escritura en
+PostgreSQL. La importación continúa siendo explícita y de empresa completa.
+Ver `LECTOR-WEB-PUBLICA.md`; no se incorpora scheduler ni despliegue CMS.
