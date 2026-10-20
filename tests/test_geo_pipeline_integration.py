@@ -33,7 +33,7 @@ class OfflineProvider:
 
     def generate(self, prompt):
         self.prompts.append(prompt)
-        return "Salida GEO ficticia de Aurora"
+        return "Salida GEO ficticia de GEO Engine"
 
 
 @unittest.skipUnless(os.getenv("GEO_TEST_DATABASE_URL"), "Requiere GEO_TEST_DATABASE_URL")
@@ -146,7 +146,7 @@ class GeoPipelineIntegrationTests(unittest.TestCase):
                 request = transport.call_args.args[0]
                 self.assertEqual(request.full_url, "https://api.openai.com/v1/responses")
                 prompt = json.loads(request.data)["input"]
-                self.assertIn("Aurora", prompt)
+                self.assertIn("GEO Engine", prompt)
                 self.assertNotIn("MARCADOR_INTERNO", prompt)
                 saved = self.store.get(result["request_id"])
                 self.assertEqual(saved["text"], result["text"])

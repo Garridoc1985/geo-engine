@@ -15,19 +15,19 @@ def evidence(chunk_id="c1", content="Conocimiento público de prueba"):
 class InterpretationTests(unittest.TestCase):
     def test_spanish_and_english_tasks(self):
         cases = {
-            "¿Quiénes son Aurora Industrial?": "company_profile",
-            "¿Quién es Aurora?": "company_profile",
-            "Describe la empresa Aurora": "company_profile",
-            "Perfil empresarial de Aurora": "company_profile",
-            "Company profile for Aurora": "company_profile",
-            "About the company Aurora": "company_profile",
-            "Who is Aurora?": "company_profile",
-            "¿Qué productos y servicios ofrece Aurora?": "catalog",
+            "¿Quiénes son Boreal Industrial?": "company_profile",
+            "¿Quién es Boreal?": "company_profile",
+            "Describe la empresa Boreal": "company_profile",
+            "Perfil empresarial de Boreal": "company_profile",
+            "Company profile for Boreal": "company_profile",
+            "About the company Boreal": "company_profile",
+            "Who is Boreal?": "company_profile",
+            "¿Qué productos y servicios ofrece Boreal?": "catalog",
             "¿Qué ofrecen?": "catalog",
-            "Lista los servicios de Aurora": "catalog",
+            "Lista los servicios de Boreal": "catalog",
             "Catálogo de sensores": "catalog",
-            "What products does Aurora offer?": "catalog",
-            "List the services of Aurora": "catalog",
+            "What products does Boreal offer?": "catalog",
+            "List the services of Boreal": "catalog",
             "Preguntas frecuentes sobre mantenimiento": "faq",
             "Frequently asked questions about maintenance": "faq",
             "Create FAQs about products": "faq",
@@ -66,10 +66,10 @@ class InterpretationTests(unittest.TestCase):
 
     def test_search_text_preserves_specific_terms_without_inventing(self):
         cases = {
-            "Redacta FAQs de los productos de Aurora Industrial": "Aurora Industrial",
+            "Redacta FAQs de los productos de Boreal Industrial": "Boreal Industrial",
             "¿Qué incluye el servicio de mantenimiento predictivo?": "mantenimiento predictivo",
-            "Company profile for Aurora Industrial": "Aurora Industrial",
-            "List the services of Aurora": "Aurora",
+            "Company profile for Boreal Industrial": "Boreal Industrial",
+            "List the services of Boreal": "Boreal",
             "Contenido GEO sobre análisis de presión": "análisis presión",
         }
         for query, expected in cases.items():

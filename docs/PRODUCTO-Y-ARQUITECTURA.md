@@ -6,6 +6,32 @@ Este documento prevalece sobre el alcance inicial del sprint en caso de conflict
 
 ## Propósito
 
+### Precisión vigente del propietario — capa GEO
+
+GEO Engine desarrolla una capa backend evolutiva para la visibilidad de empresas
+en respuestas de IA. El conocimiento se entrega mediante HTML, CMS o servidor de
+la empresa; el primer destino de descubrimiento es ChatGPT, y otros se incorporan
+según necesidades. El destinatario comercial es la empresa; el consumidor técnico
+del contenido publicado es el motor IA. SEO tradicional y Google Ads no forman
+parte del producto solicitado. La reutilización de HTML, metadatos y rastreo es
+infraestructura de entrega; no cambia ese alcance de producto.
+
+La conexión de salida a OpenAI genera o evalúa borradores. Sus pruebas exitosas no
+verifican que ChatGPT encuentre, cite o recomiende contenido en búsquedas externas.
+El router de generación auxiliar conserva su prioridad; no define el orden de
+desarrollo de canales de descubrimiento. No se publican borradores automáticamente.
+
+Primera superficie implementada: proyección pública por empresa en HTML y JSON,
+manifest de versión, sitemap y configuración de rastreo. Vista loopback con lectura
+vigente de PostgreSQL por petición; exportación portable a un release nuevo para
+integración posterior en el sitio/CMS. Fuentes web obligatorias, documentos y
+fragmentos públicos activos con ACL vacía. Detalle en `PUBLICACION-GEO.md`.
+
+Automatización vigente: regeneración de la proyección al leer la vista local y
+construcción determinista al ejecutar `publish-company`. El despliegue automático
+desde GitHub y los adaptadores de escritura a CMS aún no están implementados.
+Requieren destino y credenciales de despliegue propios, separados de OpenAI.
+
 Preparar, verificar y entregar conocimiento empresarial para que sistemas de IA,
 como Claude y ChatGPT, y buscadores como Perplexity, puedan descubrirlo, recuperarlo
 y citarlo. Perplexity se clasifica como buscador y canal de descubrimiento del
@@ -117,3 +143,9 @@ Ver `DESARROLLO-SOBRE-SCW.md` para ejecutar el recorrido con una empresa fictici
 El paso 5 está implementado en `pipeline.py`: interpreta la tarea, extrae términos,
 recupera contexto público empresarial y prepara las instrucciones/formato antes
 del router. Los metadatos se registran en PostgreSQL. Ver `PIPELINE-GEO.md`.
+
+Actualización del 20 de octubre de 2026: se incorpora ingesta de revisiones
+inmutables con activación transaccional del snapshot empresarial mediante
+`ingest-company --allow-revisions`. No requiere cambiar el esquema PostgreSQL;
+las revisiones se representan en IDs derivados del contenido y la fuente.
+Contrato y límites en `ACTUALIZACION-CONOCIMIENTO.md`.

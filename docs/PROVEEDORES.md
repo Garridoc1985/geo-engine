@@ -32,6 +32,9 @@ OpenAI. La CLI `check-provider --provider chatgpt` revisa configuración sin red
 PostgreSQL; `--check-access` agrega esa consulta autenticada. Solo devuelve estado,
 modelo, variables faltantes y códigos seguros; nunca imprime la clave. El estado
 `model_accessible` verifica acceso a metadatos, sin garantizar saldo ni generación.
+`--list-models` requiere solo la clave API y lista los identificadores visibles.
+`--check-generation` prueba la generación con una frase sintética y solo devuelve
+estado y longitud de salida; puede generar cargos y tampoco requiere PostgreSQL.
 La configuración y el recorrido real están en [integración OpenAI](INTEGRACION-OPENAI.md).
 La respuesta Responses se recorre por elementos `message` y bloques `output_text`;
 no se asume que el primer elemento sea texto ni se usa la comodidad de SDK

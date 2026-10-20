@@ -17,6 +17,8 @@ from .pipeline import TASKS
 from .runs import PostgresRunStore
 from .company_knowledge import CompanyKnowledge
 from .company_store import import_company
+from .publication import build_publication, export_publication, create_publication_server
+from .integration import build_integration_bundle, export_integration
 
 
 def main() -> int:
@@ -27,6 +29,14 @@ def main() -> int:
     company = commands.add_parser("ingest-company", help="Importar conocimiento empresarial con estructura SCW")
     company.add_argument("company_id")
     company.add_argument("--workspace", type=Path, required=True, help="Raíz que contiene clients/<company_id>")
+    company.add_argument("--allow-revisions", action="store_true", help="Crear revisiones inmutables del snapshot completo; activar solo las versiones importadas")
+    for name in ("publish-company", "publish-integration", "serve-publication"):
+        publication = commands.add_parser(name, help="Publicar conocimiento autorizado por empresa sin llamar a IA")
+        publication.add_argument("--company", dest="company_id", required=True)
+        publication.add_argument("--name", required=True, help="Nombre público de la empresa")
+        publication.add_argument("--base-url", required=True, help="URL canónica del destino; localhost para revisión")
+        if name in ("publish-company", "publish-integration"):
+            publication.add_argument("--output", type=Path, required=True, help="Directorio nuevo del release HTML/JSON")
     for name in ("route", "geo"):
         route = commands.add_parser(name, help="Pipeline GEO; por defecto planifica sin consumir APIs")
         route.add_argument("query")
@@ -41,11 +51,23 @@ def main() -> int:
     show_run.add_argument("request_id")
     check = commands.add_parser("check-provider", help="Diagnosticar configuración y acceso API sin usar PostgreSQL")
     check.add_argument("--provider", choices=("chatgpt",), required=True)
-    check.add_argument("--check-access", action="store_true", help="Consultar el modelo en OpenAI sin generar contenido")
+    check_mode = check.add_mutually_exclusive_group()
+    check_mode.add_argument("--check-access", action="store_true", help="Consultar el modelo en OpenAI sin generar contenido")
+    check_mode.add_argument("--check-generation", action="store_true", help="Generar una respuesta sintética en OpenAI (puede generar cargos)")
+    check_mode.add_argument("--list-models", action="store_true", help="Listar modelos visibles para la clave OpenAI")
     args = parser.parse_args()
     try:
         if args.command == "check-provider":
             provider = build_providers_from_env(only=args.provider)[0]
+            if args.list_models:
+                result = {"provider": provider.name, "status": "not_configured", "missing": ["OPENAI_API_KEY"]}
+                if provider.api_key.strip():
+                    try:
+                        result = {"provider": provider.name, "status": "models_listed", "models": provider.list_models()}
+                    except ProviderError as error:
+                        result = {"provider": provider.name, "status": "error", "code": error.code}
+                print(json.dumps(result, ensure_ascii=False))
+                return 0 if result["status"] == "models_listed" else 2
             missing = [name for name, value in (("OPENAI_MODEL", provider.model), ("OPENAI_API_KEY", provider.api_key)) if not value]
             result = {"provider": provider.name, "model": provider.model or None,
                       "configured": provider.available, "missing": missing,
@@ -56,17 +78,43 @@ def main() -> int:
                     result["status"] = "model_accessible"
                 except ProviderError as error:
                     result.update(status="error", code=error.code)
+            elif args.check_generation and provider.available:
+                try:
+                    text = provider.generate("Responde solo con la palabra OK.")
+                    result.update(status="generation_ok", output_characters=len(text))
+                except ProviderError as error:
+                    result.update(status="error", code=error.code)
             print(json.dumps(result, ensure_ascii=False))
-            return 0 if result["status"] in {"configured", "model_accessible"} else 2
+            return 0 if result["status"] in {"configured", "model_accessible", "generation_ok"} else 2
         config = Config.from_env()
-        if args.command == "ingest":
+        if args.command in ("publish-company", "publish-integration"):
+            integration = args.command == "publish-integration"
+            build = build_integration_bundle if integration else build_publication
+            export = export_integration if integration else export_publication
+            bundle = build(config.database_url, args.company_id, args.name, args.base_url)
+            export(bundle, args.output)
+            manifest = json.loads(bundle["manifest.json"])
+            result = {"status": "built", "company_id": args.company_id, "output": str(args.output.resolve()),
+                      "content_version": manifest["content_version"], "items": manifest["item_count"],
+                      "sources": manifest["source_count"], "files": sorted(bundle)}
+        elif args.command == "serve-publication":
+            server = create_publication_server(config, args.company_id, args.name, args.base_url)
+            print(f"Vista GEO local: http://{config.host}:{server.server_port}; URL canónica: {args.base_url}", flush=True)
+            try:
+                server.serve_forever()
+            except KeyboardInterrupt:
+                pass
+            finally:
+                server.server_close()
+            return 0
+        elif args.command == "ingest":
             items = load_catalog(args.path)
             initialize(config.database_url)
             result = save_catalog(config.database_url, items)
         elif args.command == "ingest-company":
             records = CompanyKnowledge(args.workspace, args.company_id).load()
             initialize(config.database_url)
-            result = import_company(config.database_url, args.company_id, records)
+            result = import_company(config.database_url, args.company_id, records, allow_revisions=args.allow_revisions)
         elif args.command == "show-run":
             from uuid import UUID
             run_id = str(UUID(args.request_id))

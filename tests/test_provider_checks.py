@@ -16,6 +16,30 @@ TEST_ENV = {"OPENAI_MODEL": "dummy-model", "OPENAI_API_KEY": "dummy-private-key"
 
 
 class ProviderAccessCheckTests(unittest.TestCase):
+    def test_model_listing_uses_key_without_a_configured_model(self):
+        provider = HTTPProvider("chatgpt", "", "dummy-private-key")
+        payload = json.dumps({"object": "list", "data": [{"id": "z-model"}, {"id": "a-model"}]}).encode()
+        with patch("geo_engine.providers.urlopen", return_value=io.BytesIO(payload)) as transport:
+            self.assertEqual(provider.list_models(), ("a-model", "z-model"))
+        request = transport.call_args.args[0]
+        self.assertEqual(request.full_url, "https://api.openai.com/v1/models")
+        self.assertEqual(request.get_method(), "GET")
+        self.assertEqual(request.get_header("Authorization"), "Bearer dummy-private-key")
+        self.assertIsNone(request.data)
+
+    def test_model_listing_rejects_missing_key_and_malformed_data(self):
+        with patch("geo_engine.providers.urlopen") as transport:
+            with self.assertRaises(ProviderError) as caught:
+                HTTPProvider("chatgpt", "", "").list_models()
+        self.assertEqual(caught.exception.code, "not_configured")
+        transport.assert_not_called()
+        for payload in [b"{}", b'{"data":{}}', b'{"data":[{}]}', b'{"data":[{"id":42}]}']:
+            with self.subTest(payload=payload), \
+                 patch("geo_engine.providers.urlopen", return_value=io.BytesIO(payload)):
+                with self.assertRaises(ProviderError) as caught:
+                    HTTPProvider("chatgpt", "", "dummy-private-key").list_models()
+                self.assertEqual(caught.exception.code, "invalid_response")
+
     def test_model_check_uses_encoded_model_get_without_generation(self):
         model = "organization/model with space?version=1#fragment"
         payload = json.dumps({"id": model, "object": "model"}).encode()
@@ -153,6 +177,64 @@ class ProviderCheckCLITests(unittest.TestCase):
                 self.assertEqual(result["status"], "error")
                 self.assertEqual(result["code"], error_code)
                 access.assert_called_once_with()
+
+    def test_generation_check_uses_only_synthetic_input_without_database(self):
+        args = ["geo-engine", "check-provider", "--provider", "chatgpt", "--check-generation"]
+        stdout = io.StringIO()
+        with patch.dict(os.environ, TEST_ENV, clear=True), patch("sys.argv", args), \
+             patch("geo_engine.cli.Config.from_env") as config, \
+             patch("geo_engine.cli.initialize") as initialize, \
+             patch("geo_engine.cli.PostgresRunStore") as journal, \
+             patch.object(HTTPProvider, "generate", return_value="OK") as generate, \
+             contextlib.redirect_stdout(stdout):
+            code = main()
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(stdout.getvalue())["status"], "generation_ok")
+        self.assertEqual(json.loads(stdout.getvalue())["output_characters"], 2)
+        self.assertNotIn("dummy-private-key", stdout.getvalue())
+        generate.assert_called_once_with("Responde solo con la palabra OK.")
+        config.assert_not_called()
+        initialize.assert_not_called()
+        journal.assert_not_called()
+
+    def test_generation_check_requires_configuration_and_reports_safe_errors(self):
+        args = ["geo-engine", "check-provider", "--provider", "chatgpt", "--check-generation"]
+        for env, error, expected_status in [
+            ({"OPENAI_MODEL": "dummy-model"}, None, "not_configured"),
+            (TEST_ENV, ProviderError("http_401"), "error"),
+        ]:
+            with self.subTest(expected_status=expected_status):
+                stdout = io.StringIO()
+                with patch.dict(os.environ, env, clear=True), patch("sys.argv", args), \
+                     patch.object(HTTPProvider, "generate", side_effect=error) as generate, \
+                     contextlib.redirect_stdout(stdout):
+                    code = main()
+                result = json.loads(stdout.getvalue())
+                self.assertEqual(code, 2)
+                self.assertEqual(result["status"], expected_status)
+                self.assertNotIn("dummy-private-key", stdout.getvalue())
+                if error is None:
+                    generate.assert_not_called()
+                else:
+                    generate.assert_called_once()
+                    self.assertEqual(result["code"], "http_401")
+
+    def test_model_listing_does_not_require_model_or_database(self):
+        args = ["geo-engine", "check-provider", "--provider", "chatgpt", "--list-models"]
+        stdout = io.StringIO()
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "dummy-private-key"}, clear=True), \
+             patch("sys.argv", args), patch("geo_engine.cli.Config.from_env") as config, \
+             patch("geo_engine.cli.initialize") as initialize, \
+             patch.object(HTTPProvider, "list_models", return_value=("a-model", "z-model")) as listing, \
+             contextlib.redirect_stdout(stdout):
+            code = main()
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(stdout.getvalue()), {
+            "provider": "chatgpt", "status": "models_listed", "models": ["a-model", "z-model"]})
+        self.assertNotIn("dummy-private-key", stdout.getvalue())
+        listing.assert_called_once_with()
+        config.assert_not_called()
+        initialize.assert_not_called()
 
 
 if __name__ == "__main__":

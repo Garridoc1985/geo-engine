@@ -53,7 +53,7 @@ Tras importar la empresa de demostración:
 
 ```bash
 .venv/bin/python -m geo_engine.cli ingest-company demo_company --workspace fixtures/scw_demo
-.venv/bin/python -m geo_engine.cli geo "¿Qué servicios ofrece Aurora?" --company demo_company
+.venv/bin/python -m geo_engine.cli geo "¿Qué servicios ofrece GEO Engine?" --company demo_company
 .venv/bin/python -m geo_engine.cli geo "Prepara preguntas frecuentes" --company demo_company --task faq --origin perplexity
 ```
 

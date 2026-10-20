@@ -25,10 +25,11 @@ en esa sesión; no se escribe en archivos del repositorio. `.env` no se carga
 automáticamente.
 
 ```bash
-cd /mnt/c/Users/Usuario/Desktop/Postulaciones/geo-engine
+cd ~/geo-engine
 read -r -s -p 'Clave API OpenAI: ' OPENAI_API_KEY
 printf '\n'
 export OPENAI_API_KEY
+.venv/bin/python -m geo_engine.cli check-provider --provider chatgpt --list-models
 read -r -p 'Identificador del modelo habilitado: ' OPENAI_MODEL
 export OPENAI_MODEL
 export DATABASE_URL=postgresql:///geo_engine
@@ -43,18 +44,27 @@ No se adopta un modelo predeterminado sin configuración explícita.
 
 ```bash
 .venv/bin/python -m geo_engine.cli check-provider --provider chatgpt
+.venv/bin/python -m geo_engine.cli check-provider --provider chatgpt --list-models
 .venv/bin/python -m geo_engine.cli check-provider --provider chatgpt --check-access
+.venv/bin/python -m geo_engine.cli check-provider --provider chatgpt --check-generation
 ```
 
 El primer comando no usa red. Informa `configured` o `not_configured` y los nombres
-de variables faltantes. El segundo, si la configuración está completa, realiza un
-GET autenticado del modelo, sin enviar consulta ni conocimiento empresarial.
-Ambos funcionan sin conexión PostgreSQL. Devuelven código de salida 0 cuando
-su comprobación pasa y 2 si falta configuración o falla el acceso.
+de variables faltantes. `--list-models` requiere solo la clave API y enumera los
+identificadores visibles para esa clave; el listado no confirma que todos admitan
+Responses. `--check-access` realiza un GET autenticado del modelo elegido, sin
+enviar consulta ni conocimiento empresarial. Los cuatro funcionan sin PostgreSQL.
+Devuelven código de salida 0 cuando pasan y 2 si falta configuración o falla el
+acceso.
 
 `model_accessible` confirma acceso a los metadatos de ese modelo; la generación
-debe comprobarse aparte. `http_401` indica rechazo de autenticación; `http_404`
-indica que ese modelo no está disponible para la solicitud. Los errores muestran
+debe comprobarse aparte. `--check-generation` envía únicamente la frase sintética
+«Responde solo con la palabra OK.» a Responses, sin usar PostgreSQL ni contenido
+empresarial. Puede generar cargos. Devuelve `generation_ok` y el número de caracteres
+recibidos, sin imprimir el texto. Las comprobaciones de acceso y generación
+requieren `OPENAI_MODEL` y `OPENAI_API_KEY`; son alternativas entre sí. `http_401` indica
+rechazo de autenticación; `http_404` indica que ese modelo no está disponible
+para la solicitud. Los errores muestran
 únicamente códigos seguros, sin cuerpos HTTP ni credenciales.
 
 ## Primera generación con empresa ficticia
@@ -64,7 +74,7 @@ público y ejecutar una sola tarea:
 
 ```bash
 .venv/bin/python -m geo_engine.cli ingest-company demo_company --workspace fixtures/scw_demo
-.venv/bin/python -m geo_engine.cli geo 'Describe brevemente la empresa Aurora' \
+.venv/bin/python -m geo_engine.cli geo 'Describe brevemente la empresa GEO Engine' \
   --company demo_company --task company_profile --provider chatgpt --execute
 ```
 

@@ -89,6 +89,26 @@ class HTTPProvider:
     def available(self) -> bool:
         return bool(self.model.strip() and self.api_key.strip())
 
+    def list_models(self) -> tuple[str, ...]:
+        """Enumera modelos visibles para la clave OpenAI, sin requerir un modelo elegido."""
+        if self.name != "chatgpt":
+            raise ProviderError("unsupported_access_check")
+        if not self.api_key.strip():
+            raise ProviderError("not_configured")
+        request = Request(
+            "https://api.openai.com/v1/models",
+            headers={"Authorization": "Bearer " + self.api_key, "Accept": "application/json"},
+            method="GET",
+        )
+        data = _request_json(request, timeout=self.timeout)
+        if not isinstance(data, dict) or not isinstance(data.get("data"), list):
+            raise ProviderError("invalid_response", retryable=True)
+        items = data["data"]
+        if any(not isinstance(item, dict) or not isinstance(item.get("id"), str)
+               or not item["id"] for item in items):
+            raise ProviderError("invalid_response", retryable=True)
+        return tuple(sorted(item["id"] for item in items))
+
     def check_model_access(self) -> None:
         """Comprueba acceso al modelo OpenAI sin generar contenido empresarial."""
         if self.name != "chatgpt":

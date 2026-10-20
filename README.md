@@ -1,5 +1,16 @@
 # GEO Engine — Inteligencia Comercial y GEO
 
+El producto es una capa de publicación de conocimiento empresarial para visibilidad
+en respuestas de IA, comenzando por ChatGPT. La generación con OpenAI es una
+herramienta auxiliar. Ya existe una [superficie de publicación por empresa](docs/PUBLICACION-GEO.md)
+en HTML/JSON, con procedencia y permisos, exportable a sitio/CMS/servidor.
+La vista local se actualiza desde PostgreSQL por petición; el despliegue externo
+y la medición de citas quedan pendientes. No es un producto de SEO o Google Ads.
+
+Para integrar en un sitio/CMS existente hay un paquete con fragmentos HTML visibles,
+metadatos y datos públicos. `publish-integration` exige destino HTTPS explícito y
+no instala cambios remotamente. [Uso e instalación](docs/INTEGRACION-WEB-GEO.md).
+
 Repositorio: https://github.com/Garridoc1985/geo-engine (privado, rama `main`).
 
 GEO Engine prepara información empresarial verificable para consumo por sistemas
@@ -34,10 +45,10 @@ sudo -u postgres createuser "$USER"
 sudo -u postgres createdb --owner="$USER" geo_engine
 ```
 
-Desde WSL, la ubicación actual es:
+Desde WSL, usar el clon de trabajo en el directorio personal:
 
 ```bash
-cd /mnt/c/Users/Usuario/Desktop/Postulaciones/geo-engine
+cd ~/geo-engine
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 export DATABASE_URL=postgresql:///geo_engine
@@ -223,11 +234,36 @@ La etapa vigente conecta primero OpenAI mediante el adaptador `chatgpt`.
 
 ```bash
 .venv/bin/python -m geo_engine.cli check-provider --provider chatgpt
+.venv/bin/python -m geo_engine.cli check-provider --provider chatgpt --list-models
 .venv/bin/python -m geo_engine.cli check-provider --provider chatgpt --check-access
+.venv/bin/python -m geo_engine.cli check-provider --provider chatgpt --check-generation
 ```
 
-El primer comando solo revisa configuración; el segundo consulta el acceso al
-modelo en OpenAI. Ambos funcionan sin PostgreSQL y no generan contenido.
-La prueba de conexión inicial devolvió HTTP 401 con la credencial disponible;
-la generación real está pendiente de una clave válida y un modelo en Ubuntu.
+El primero solo revisa configuración; el segundo lista modelos visibles para la
+clave API. El tercero consulta el acceso al modelo elegido. El cuarto hace una
+generación sintética de prueba y puede generar cargos. Ninguno requiere PostgreSQL.
+La conexión y generación real ya se validaron manualmente en Ubuntu.
+Las pruebas automatizadas usan transporte simulado y no consumen APIs reales.
 [Configuración y primera ejecución](docs/INTEGRACION-OPENAI.md).
+
+## Actualización controlada
+
+La ingesta admite revisiones inmutables explícitas con `ingest-company --allow-revisions`.
+Conserva historia y activa el snapshot completo importado, sin publicar remotamente.
+[Contrato y uso](docs/ACTUALIZACION-CONOCIMIENTO.md).
+
+## Estado de entrega — 20 de octubre de 2026
+
+Suite local: 158 pruebas aprobadas con PostgreSQL, sin APIs externas.
+No existe un comando `sync-catalog` en esta versión. El contrato operativo para
+snapshots empresariales es `company_store.import_company(..., allow_revisions=True)`:
+recibe una tupla completa de `KnowledgeRecord` por empresa; omitir registros los
+retira de la selección activa. No entregar un snapshot parcial tras un fallo de
+lectura, porque retiraría registros válidos. La CLI correspondiente es
+`ingest-company --workspace RUTA --allow-revisions`, que carga la estructura SCW.
+
+El lector de páginas públicas aún no está implementado. Deberá conservar fuentes,
+limitarse a páginas expresamente autorizadas y excluir rutas de clientes, órdenes
+y usuarios. No necesita el código del sitio para obtener páginas públicas.
+WordPress es el primer adaptador de publicación previsto; Durable es el destino
+particular previsto para Vector Bikes. Ninguno tiene despliegue automático activo.

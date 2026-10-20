@@ -1,10 +1,12 @@
 """Persistencia operativa del conocimiento empresarial adaptado de SCW."""
 import re
+import hashlib
+import json
 import psycopg
 from .company_knowledge import KnowledgeRecord
 
 
-def import_company(database_url: str, company_id: str, records: tuple[KnowledgeRecord, ...]) -> dict:
+def import_company(database_url: str, company_id: str, records: tuple[KnowledgeRecord, ...], *, allow_revisions: bool = False) -> dict:
     if not isinstance(company_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", company_id):
         raise ValueError("Identificador de empresa inválido")
     if len({r.id for r in records}) != len(records):
@@ -17,9 +19,15 @@ def import_company(database_url: str, company_id: str, records: tuple[KnowledgeR
         db.execute("UPDATE company_documents SET active=false WHERE company_id=%s", (company_id,))
         current = set()
         for item in records:
-            source_id = f"scw:{company_id}:{item.id}:source"
-            document_id = f"scw:{company_id}:{item.id}:document"
-            chunk_id = f"scw:{company_id}:{item.id}:chunk:1"
+            # Content identity excludes permissions: ACL changes apply to the same revision.
+            revision = ""
+            if allow_revisions:
+                payload = json.dumps([item.title, item.content, item.reference], ensure_ascii=False, separators=(",", ":"))
+                revision = ":rev:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+            record_id = item.id + revision
+            source_id = f"scw:{company_id}:{record_id}:source"
+            document_id = f"scw:{company_id}:{record_id}:document"
+            chunk_id = f"scw:{company_id}:{record_id}:chunk:1"
             source = (source_id, item.reference, item.title)
             document = (document_id, source_id, item.title, item.visibility, list(item.allowed_principals))
             chunk = (chunk_id, document_id, item.content, item.visibility, list(item.allowed_principals))
