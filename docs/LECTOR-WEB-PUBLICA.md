@@ -55,7 +55,8 @@ manifiesto exige autorización pública explícita.
 conocimiento adicional, combinar primero las evidencias, el registro y access.json
 en un workspace completo revisado. No importar una selección parcial de páginas
 sobre una empresa con otros registros que deban conservarse. El lector no ejecuta
-esa importación automáticamente y todavía no existe `sync-catalog`.
+esa importación automáticamente. Para conservar otras fuentes, usar preferentemente
+`sync-catalog`, descrito en [sincronización por fuente](SINCRONIZACION-CATALOGO.md).
 
 Cada captura requiere un directorio nuevo. Repetir captura e importación con el
 mismo texto y fuentes reutiliza revisiones; un cambio genera una revisión nueva.
@@ -83,7 +84,10 @@ Implementado: URLs explícitas → captura pública → snapshot SCW → revisi�
 → ingesta con revisiones → PostgreSQL → construcción HTML/JSON existente.
 
 Pendiente: planificación periódica, comparación previa a importar, revisión editorial
-registrada, sincronización por subconjunto de fuentes, adaptador WordPress, despliegue
+registrada, adaptador WordPress, despliegue
 y comprobación pública. Durable sigue como destino particular previsto de Vector Bikes.
 El lector no consulta robots.txt; antes de autorizar capturas, el operador debe
 revisar condiciones de acceso y reglas aplicables. No es un rastreador automático.
+
+Incremento posterior: el lector cierra las capturas exitosas con snapshot.json.
+`sync-catalog` verifica ese comprobante antes de aplicar el snapshot por ámbito.

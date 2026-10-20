@@ -254,8 +254,10 @@ Conserva historia y activa el snapshot completo importado, sin publicar remotame
 
 ## Estado de entrega — 20 de octubre de 2026
 
-Suite local: 168 pruebas aprobadas con PostgreSQL, sin APIs externas.
-No existe un comando `sync-catalog` en esta versión. El contrato operativo para
+Suite local: 176 pruebas aprobadas con PostgreSQL, sin APIs externas.
+`sync-catalog` ya permite sincronizar snapshots web completos por empresa y fuente,
+con previsualización, integridad y aplicación transaccional explícita.
+[Contrato y uso](docs/SINCRONIZACION-CATALOGO.md). El contrato anterior para
 snapshots empresariales es `company_store.import_company(..., allow_revisions=True)`:
 recibe una tupla completa de `KnowledgeRecord` por empresa; omitir registros los
 retira de la selección activa. No entregar un snapshot parcial tras un fallo de
@@ -268,3 +270,11 @@ de clientes, órdenes y usuarios. No necesita el código del sitio ni escribe
 automáticamente en PostgreSQL. [Contrato y uso](docs/LECTOR-WEB-PUBLICA.md).
 WordPress es el primer adaptador de publicación previsto; Durable es el destino
 particular previsto para Vector Bikes. Ninguno tiene despliegue automático activo.
+
+
+## Sincronizar actualizaciones web
+
+Capturar con `read-public-web`, revisar y ejecutar `sync-catalog --company EMPRESA
+--scope website --workspace RUTA`. Por defecto previsualiza; `--apply` confirma.
+Conserva el conocimiento manual y otras fuentes. No publica ni instala un scheduler.
+Los snapshots deben incluir el comprobante `snapshot.json` generado por el lector.

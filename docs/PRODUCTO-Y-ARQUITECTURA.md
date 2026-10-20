@@ -156,3 +156,11 @@ públicas HTTPS a snapshots SCW revisables. Usa conexión fijada a una IP global
 validada y TLS del dominio, sin redirecciones, cookies, crawling ni escritura en
 PostgreSQL. La importación continúa siendo explícita y de empresa completa.
 Ver `LECTOR-WEB-PUBLICA.md`; no se incorpora scheduler ni despliegue CMS.
+
+
+Incremento de sincronización del 20 de octubre: `sync-catalog` aplica snapshots web
+cerrados por empresa y ámbito. Namespace propio de IDs, sin migración de esquema;
+previsualización con rollback por defecto y activación transaccional explícita.
+Conserva fuentes manuales y otros ámbitos. La ingesta SCW ya no desactiva ámbitos
+sincronizados. No se añade scheduler ni despliegue. Contrato en
+`SINCRONIZACION-CATALOGO.md`.

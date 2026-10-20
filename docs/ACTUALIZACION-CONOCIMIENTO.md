@@ -33,3 +33,8 @@ anterior permanece igual hasta reemplazarlo y retirar versiones/cachés anterior
 Vector Bikes tiene Durable como destino previsto; este cambio no conecta Durable,
 no publica remotamente ni instala un job automático. La sincronización automática,
 vectorización y Graphify continúan pendientes.
+
+
+Incremento de sincronización: `ingest-company` reemplaza solo su selección SCW;
+conserva los ámbitos creados por `sync-catalog`. Para snapshots del lector web usar
+preferentemente la sincronización por fuente en `SINCRONIZACION-CATALOGO.md`.

@@ -20,6 +20,7 @@ from .company_store import import_company
 from .publication import build_publication, export_publication, create_publication_server
 from .integration import build_integration_bundle, export_integration
 from .web_reader import read_public_web
+from .sync_catalog import sync_catalog
 
 
 def main() -> int:
@@ -28,6 +29,14 @@ def main() -> int:
     reader = commands.add_parser("read-public-web", help="Leer URLs públicas autorizadas y preparar un snapshot SCW para revisión")
     reader.add_argument("--manifest", type=Path, required=True)
     reader.add_argument("--output", type=Path, required=True, help="Directorio nuevo del workspace de revisión")
+    sync = commands.add_parser("sync-catalog", help="Sincronizar un snapshot web por empresa y ámbito; previsualiza por defecto")
+    sync.add_argument("--company", dest="company_id", required=True)
+    sync.add_argument("--scope", required=True, help="Identificador estable de la fuente, por ejemplo website")
+    sync_input = sync.add_mutually_exclusive_group(required=True)
+    sync_input.add_argument("--workspace", type=Path)
+    sync_input.add_argument("--clear", action="store_true", help="Retirar explícitamente todos los registros de este ámbito")
+    sync.add_argument("--apply", action="store_true", help="Confirmar la aplicación transaccional del snapshot revisado")
+    sync.add_argument("--expect-version", help="Exigir el hash exacto del snapshot revisado")
     ingest = commands.add_parser("ingest", help="Importar catálogo JSON o CSV")
     ingest.add_argument("path", type=Path)
     company = commands.add_parser("ingest-company", help="Importar conocimiento empresarial con estructura SCW")
@@ -94,7 +103,11 @@ def main() -> int:
             print(json.dumps(result, ensure_ascii=False))
             return 0 if result["status"] in {"configured", "model_accessible", "generation_ok"} else 2
         config = Config.from_env()
-        if args.command in ("publish-company", "publish-integration"):
+        if args.command == "sync-catalog":
+            initialize(config.database_url)
+            result = sync_catalog(config.database_url, args.company_id, args.scope, workspace=args.workspace,
+                                  clear=args.clear, apply=args.apply, expected_version=args.expect_version)
+        elif args.command in ("publish-company", "publish-integration"):
             integration = args.command == "publish-integration"
             build = build_integration_bundle if integration else build_publication
             export = export_integration if integration else export_publication

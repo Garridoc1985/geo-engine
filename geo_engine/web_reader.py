@@ -10,6 +10,7 @@ import socket
 import ssl
 from urllib.parse import unquote, urlsplit
 
+from dataclasses import asdict
 from .company_knowledge import CompanyKnowledge
 
 MAX_BYTES = 1_000_000
@@ -146,6 +147,11 @@ def read_manifest(path):
     return data
 
 
+def snapshot_version(company_id, records):
+    payload = {"company_id": company_id, "records": [asdict(r) for r in sorted(records, key=lambda r: r.id)]}
+    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
 def read_public_web(manifest_path, output):
     """Build a complete review workspace only after every authorized page succeeds."""
     data = read_manifest(manifest_path)
@@ -173,4 +179,6 @@ def read_public_web(manifest_path, output):
     (root / "access.json").write_text(json.dumps(access, ensure_ascii=False, indent=2), encoding="utf-8")
     (root / "evidence_registry.md").write_text("\n".join(registry) + "\n", encoding="utf-8")
     loaded = CompanyKnowledge(output, data["company_id"]).load()
-    return {"status": "prepared_for_review", "company_id": data["company_id"], "pages": len(loaded), "workspace": str(output.resolve())}
+    version = snapshot_version(data["company_id"], loaded)
+    (output / "snapshot.json").write_text(json.dumps({"company_id": data["company_id"], "content_version": version, "item_count": len(loaded)}), encoding="utf-8")
+    return {"content_version": version, "status": "prepared_for_review", "company_id": data["company_id"], "pages": len(loaded), "workspace": str(output.resolve())}
