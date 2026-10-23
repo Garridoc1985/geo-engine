@@ -1,0 +1,115 @@
+---
+import MonthCalendar from "../../components/admin/MonthCalendar.astro";
+import Card from "../../components/taller/Card.astro";
+import PageHeader from "../../components/taller/PageHeader.astro";
+import TallerLayout from "../../layouts/TallerLayout.astro";
+import {
+  agendaForDate,
+  holidayWarning,
+  parseDate,
+  STATUS_LABELS,
+  timeRange,
+} from "../../server/admin/agenda.ts";
+import { monthOverview, parseMonth } from "../../server/admin/month.ts";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../server/auth/permissions.ts";
+import { addDays, localToday } from "../../server/booking/slots.ts";
+import { getDb } from "../../server/db/client.ts";
+
+export const prerender = false;
+
+const admin = await requireAdmin(getDb(), Astro.cookies.get(SESSION_COOKIE)?.value, new Date());
+if (!admin) return Astro.redirect(loginRedirect(Astro.url.pathname + Astro.url.search), 303);
+if (!can(admin.role, "admin.panel")) return forbiddenResponse();
+
+Astro.response.headers.set("cache-control", "no-store");
+
+const now = new Date();
+const date = parseDate(Astro.url.searchParams.get("fecha")) ?? localToday(now);
+const month = parseMonth(Astro.url.searchParams.get("mes")) ?? date.slice(0, 7);
+const [agenda, overview] = await Promise.all([
+  agendaForDate(getDb(), date),
+  monthOverview(getDb(), month, now),
+]);
+const warning = holidayWarning(now);
+---
+
+<TallerLayout title="Agenda — Vector Bikes" description="Agenda del taller." path="/admin" user={admin}>
+  <div class="stack">
+    <PageHeader title="Agenda" subtitle="Panel del taller" />
+    {warning && <p role="status" style="margin-bottom:20px;font-weight:600">{warning}</p>}
+    <Card><MonthCalendar month={overview} selected={date} /></Card>
+    <Card>
+      <form method="get" action="/admin" style="display:flex;gap:14px;align-items:end;flex-wrap:wrap;margin-bottom:20px">
+        <div class="field">
+          <label for="fecha">Fecha</label>
+          <input type="date" id="fecha" name="fecha" value={date} />
+        </div>
+        <button type="submit" class="btn">Ver día</button>
+        <a href={`/admin?fecha=${addDays(date, -1)}`}>Día anterior</a>
+        <a href={`/admin?fecha=${addDays(date, 1)}`}>Día siguiente</a>
+      </form>
+      {
+        agenda.length === 0 ? (
+          <p>No hay reservas para este día.</p>
+        ) : (
+          <div style="overflow-x:auto">
+            <table class="hours-table agenda">
+              <thead>
+                <tr>
+                  <th scope="col">Hora</th>
+                  <th scope="col">Modalidad</th>
+                  <th scope="col">Nombre</th>
+                  <th scope="col">Teléfono</th>
+                  <th scope="col">Bicicleta</th>
+                  <th scope="col">Qué necesita</th>
+                  <th scope="col">Comuna / dirección</th>
+                  <th scope="col">Estado</th>
+                  <th scope="col">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {agenda.map((booking) => (
+                  <tr>
+                    <th scope="row" class="mono">
+                      {timeRange(booking)}
+                    </th>
+                    <td>{booking.mode === "retiro" ? "Retiro" : "Taller"}</td>
+                    <td>{booking.customerName}</td>
+                    <td>
+                      <a href={`tel:${booking.phoneE164}`}>{booking.phoneE164}</a>
+                    </td>
+                    <td>{booking.bike}</td>
+                    <td>{booking.description}</td>
+                    <td>{booking.comuna ? `${booking.comuna} / ${booking.address ?? ""}` : "—"}</td>
+                    <td>{STATUS_LABELS[booking.status] ?? booking.status}</td>
+                    <td>
+                      <a href={`/admin/reservas/${booking.id}`}>Detalle</a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+    </Card>
+  </div>
+</TallerLayout>
+
+<style is:global>
+  .taller .agenda {
+    font-variant-numeric: tabular-nums;
+  }
+  .taller .month-nav .btn {
+    min-height: 48px;
+    min-width: 48px;
+  }
+  .taller .agenda th,
+  .taller .agenda td {
+    font-family: inherit;
+    text-align: left;
+    padding-right: 16px;
+    vertical-align: top;
+  }
+</style>

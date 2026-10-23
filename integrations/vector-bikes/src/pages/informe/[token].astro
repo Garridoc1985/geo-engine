@@ -1,0 +1,58 @@
+---
+import ReportView from "../../components/taller/ReportView.astro";
+import Base from "../../layouts/Base.astro";
+import { log } from "../../lib/log.ts";
+import { clientIp } from "../../server/api/client-ip.ts";
+import { checkRateLimit, originForLog, recordAttempt } from "../../server/api/handlers.ts";
+import { getDb } from "../../server/db/client.ts";
+import { getStorage } from "../../server/storage/storage.ts";
+import { viewReportByToken } from "../../server/taller/reports.ts";
+
+export const prerender = false;
+
+Astro.response.headers.set("cache-control", "no-store");
+Astro.response.headers.set("referrer-policy", "no-referrer");
+Astro.response.headers.set("x-robots-tag", "noindex");
+log.info("report.origin", { origin: originForLog(Astro.request) });
+
+let report: Awaited<ReturnType<typeof viewReportByToken>> = null;
+let message = "Enlace no válido";
+Astro.response.status = 404;
+
+// Los métodos distintos de GET reciben el mismo 404 fijo, sin consultar el informe.
+if (Astro.request.method === "GET") {
+  const db = getDb();
+  const now = new Date();
+  const ip = clientIp(Astro.request, null) ?? Astro.clientAddress;
+  const ctx = { db, now, ip };
+  const limited = await checkRateLimit(ctx);
+  if (limited) {
+    Astro.response.status = 429;
+    Astro.response.headers.set("Retry-After", limited.headers.get("Retry-After") ?? "600");
+    message = "Demasiados intentos. Vuelve a intentar en 10 minutos.";
+  } else {
+    report = await viewReportByToken(db, await getStorage(), Astro.params.token ?? "");
+    if (report) Astro.response.status = 200;
+    else await recordAttempt(ctx);
+  }
+}
+---
+
+<Base
+  title="Informe de servicio — Vector Bikes"
+  description="Informe del servicio de tu bicicleta en Vector Bikes."
+  path="/informe"
+  chrome="none"
+  noindex
+>
+  <section class="section">
+    <div class="wrap">
+      {report ? (
+        <>
+          <div class="sec-head"><h1>Informe de servicio</h1></div>
+          <ReportView snapshot={report.snapshot} photos={report.photos} />
+        </>
+      ) : <div class="sec-head"><h1>{message}</h1></div>}
+    </div>
+  </section>
+</Base>

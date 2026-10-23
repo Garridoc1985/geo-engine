@@ -1,0 +1,64 @@
+---
+import Base from "../../layouts/Base.astro";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../server/auth/permissions.ts";
+import { getDb } from "../../server/db/client.ts";
+import { buildWebsiteManifest, websiteSelection } from "../../server/geo/manifest.ts";
+import { isAllowedOrigin } from "../../server/api/handlers.ts";
+
+export const prerender = false;
+const admin = await requireAdmin(getDb(), Astro.cookies.get(SESSION_COOKIE)?.value, new Date());
+if (!admin) return Astro.redirect(loginRedirect(Astro.url.pathname), 303);
+if (!can(admin.role, "admin.panel")) return forbiddenResponse();
+Astro.response.headers.set("cache-control", "no-store");
+let error = "";
+let website = "";
+let pages = "";
+if (Astro.request.method === "POST") {
+  if (!isAllowedOrigin(Astro.request)) return forbiddenResponse();
+  const form = await Astro.request.formData();
+  website = String(form.get("website") ?? "");
+  pages = String(form.get("pages") ?? "");
+  const parsed = websiteSelection.safeParse({ website, pages, authorized: form.get("authorized") });
+  if (!parsed.success) {
+    error = "Revisa la URL y confirma la autorización de las páginas públicas.";
+  } else {
+    try {
+      const manifest = buildWebsiteManifest(parsed.data);
+      return new Response(JSON.stringify(manifest, null, 2), {
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+          "content-disposition": 'attachment; filename="vectorbikes-pages.json"',
+        },
+      });
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : "No fue posible preparar la selección.";
+    }
+  }
+  Astro.response.status = 422;
+}
+---
+<Base title="Conectar web con Geo Engine" description="Selección de páginas públicas para Geo Engine." path="/admin/geo" noindex={true} chrome="none">
+  <section class="wrap" style="padding-block:40px">
+    <a href="/admin">Volver a la agenda</a>
+    <h1>Conectar web con Geo Engine</h1>
+    <p>Prepara las páginas públicas de la nueva web de Vector Bikes para su captura y revisión.</p>
+    <p><strong>Estado: selección de páginas.</strong> Descargar este archivo no captura el sitio ni activa la sincronización.</p>
+    {error && <p id="geo-error" role="alert">{error}</p>}
+    <form method="post" action="/admin/geo" class="stack">
+      <div class="field">
+        <label for="website">URL pública de la nueva web</label>
+        <input id="website" name="website" type="url" required maxlength="2048" placeholder="https://tu-sitio.netlify.app/" value={website} aria-invalid={error ? "true" : undefined} aria-describedby={error ? "geo-error" : undefined} />
+      </div>
+      <div class="field">
+        <label for="pages">Otras páginas públicas (una URL completa por línea)</label>
+        <textarea id="pages" name="pages" rows="5" maxlength="20000">{pages}</textarea>
+      </div>
+      <label><input type="checkbox" name="authorized" value="yes" required /> Autorizo la captura de estas páginas públicas. No incluyen datos de clientes ni rutas privadas.</label>
+      <button class="btn" type="submit">Descargar selección para Geo Engine</button>
+    </form>
+    <h2>Siguientes etapas</h2>
+    <ol><li>Capturar y revisar el contenido seleccionado.</li><li>Previsualizar y aplicar la actualización en Geo Engine.</li><li>Generar, revisar e instalar la publicación HTML/JSON.</li></ol>
+  </section>
+</Base>

@@ -1,0 +1,149 @@
+---
+import { z } from "zod";
+import Card from "../../../components/taller/Card.astro";
+import PageHeader from "../../../components/taller/PageHeader.astro";
+import TallerLayout from "../../../layouts/TallerLayout.astro";
+import { isAllowedOrigin } from "../../../server/api/handlers.ts";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../../server/auth/permissions.ts";
+import { getDb } from "../../../server/db/client.ts";
+import {
+  createCustomer,
+  customerFormSchema,
+  findDuplicates,
+} from "../../../server/taller/customers.ts";
+import { DISCOVERY_CHANNELS, DISCOVERY_CHANNEL_LABELS } from "../../../server/taller/rules.ts";
+
+export const prerender = false;
+const PATH = "/taller/clientes/nuevo";
+const db = getDb();
+const now = new Date();
+const user = await requireAdmin(db, Astro.cookies.get(SESSION_COOKIE)?.value, now);
+if (!user)
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location: loginRedirect(Astro.url.pathname + Astro.url.search),
+      "cache-control": "no-store",
+    },
+  });
+if (!can(user.role, "customers.manage")) return forbiddenResponse();
+Astro.response.headers.set("cache-control", "no-store");
+const formSchema = customerFormSchema.extend({ allow_phone_duplicate: z.literal("1").optional() });
+const fields: {
+  key: string;
+  label: string;
+  type: "text" | "tel" | "email";
+  required: boolean;
+  autocomplete: string;
+  maxlength?: number;
+}[] = [
+  {
+    key: "name",
+    label: "Nombre",
+    type: "text",
+    required: true,
+    autocomplete: "name",
+    maxlength: 120,
+  },
+  { key: "phoneE164", label: "Teléfono", type: "tel", required: true, autocomplete: "tel" },
+  { key: "email", label: "Correo", type: "email", required: false, autocomplete: "email" },
+  { key: "rut", label: "RUT", type: "text", required: false, autocomplete: "off" },
+];
+const valueKeys = [...fields.map((field) => field.key), "discoveryChannel", "notes"];
+let values: Record<string, string> = {};
+const fieldErrors: Record<string, string> = {};
+let error = "";
+let existing: { id: string; name: string } | null = null;
+let canOverridePhone = false;
+
+if (Astro.request.method === "POST") {
+  if (!isAllowedOrigin(Astro.request)) return forbiddenResponse();
+  if (!can(user.role, "customers.manage")) return forbiddenResponse();
+  const form = await Astro.request.formData();
+  values = Object.fromEntries([...form].map(([key, value]) => [key, String(value)]));
+  const parsed = formSchema.safeParse(values);
+  if (!parsed.success) {
+    Astro.response.status = 422;
+    error = "Revisa los datos del cliente.";
+    for (const issue of parsed.error.issues) {
+      fieldErrors[String(issue.path[0])] = issue.message;
+    }
+  } else {
+    const result = await createCustomer(db, user, parsed.data, now, {
+      allowPhoneDuplicate: parsed.data.allow_phone_duplicate === "1",
+    });
+    if (result.ok)
+      return new Response(null, {
+        status: 303,
+        headers: {
+          location: `/taller/clientes/${result.customer.id}`,
+          "cache-control": "no-store",
+        },
+      });
+    if (result.code === "forbidden") return forbiddenResponse();
+    if (result.code === "duplicate") {
+      Astro.response.status = 409;
+      const duplicates = await findDuplicates(db, user.branchId, {
+        phoneE164: parsed.data.phoneE164,
+        rut: parsed.data.rut,
+      });
+      if (result.existing === null) {
+        error = "Ese RUT ya está registrado.";
+      } else {
+        existing = duplicates.rut ?? duplicates.phone ?? result.existing;
+        canOverridePhone = !duplicates.rut && Boolean(duplicates.phone);
+        error = `Ya existe: ${existing.name}`;
+      }
+    }
+  }
+}
+---
+
+<TallerLayout title="Nuevo cliente — Vector Bikes" description="Crear una ficha de cliente del taller." path="/taller/clientes" user={user}>
+  <div class="stack">
+    <PageHeader title="Nuevo cliente">
+      <a slot="actions" href="/taller/clientes">Volver a clientes</a>
+    </PageHeader>
+    {error && (
+      <div role="alert">
+        <p>{error}</p>
+        {existing && <a href={`/taller/clientes/${existing.id}`}>Usar ficha existente</a>}
+        {canOverridePhone && (
+          <form method="post" action={PATH}>
+            {valueKeys.map((key) => <input type="hidden" name={key} value={values[key] ?? ""} />)}
+            <input type="hidden" name="allow_phone_duplicate" value="1" />
+            <button type="submit" class="btn">Crear de todas formas</button>
+          </form>
+        )}
+      </div>
+    )}
+    <Card><form method="post" action={PATH}>
+      <div class="fields">
+        {fields.map((field) => (
+          <div class="field">
+            <label for={field.key}>{field.label}</label>
+            <input id={field.key} name={field.key} type={field.type} required={field.required} autocomplete={field.autocomplete} maxlength={field.maxlength} value={values[field.key] ?? ""} aria-invalid={Boolean(fieldErrors[field.key])} aria-describedby={fieldErrors[field.key] ? `${field.key}-error` : undefined} />
+            {fieldErrors[field.key] && <p id={`${field.key}-error`}>{fieldErrors[field.key]}</p>}
+          </div>
+        ))}
+        <fieldset>
+          <legend>Canal</legend>
+          <div class="options">
+            {DISCOVERY_CHANNELS.map((channel) => (
+              <label for={`channel-${channel}`}><input id={`channel-${channel}`} type="radio" name="discoveryChannel" value={channel} checked={values.discoveryChannel === channel} aria-invalid={Boolean(fieldErrors.discoveryChannel)} aria-describedby={fieldErrors.discoveryChannel ? "discoveryChannel-error" : undefined} />{DISCOVERY_CHANNEL_LABELS[channel]}</label>
+            ))}
+            <label for="channel-none"><input id="channel-none" type="radio" name="discoveryChannel" value="" checked={!values.discoveryChannel} aria-invalid={Boolean(fieldErrors.discoveryChannel)} aria-describedby={fieldErrors.discoveryChannel ? "discoveryChannel-error" : undefined} />Sin especificar</label>
+          </div>
+          {fieldErrors.discoveryChannel && <p id="discoveryChannel-error">{fieldErrors.discoveryChannel}</p>}
+        </fieldset>
+        <div class="field">
+          <label for="notes">Notas</label>
+          <textarea id="notes" name="notes" maxlength="2000" rows="3" aria-invalid={Boolean(fieldErrors.notes)} aria-describedby={fieldErrors.notes ? "notes-error" : undefined}>{values.notes ?? ""}</textarea>
+          {fieldErrors.notes && <p id="notes-error">{fieldErrors.notes}</p>}
+        </div>
+      </div>
+      <button type="submit" class="btn">Crear cliente</button>
+    </form></Card>
+  </div>
+</TallerLayout>

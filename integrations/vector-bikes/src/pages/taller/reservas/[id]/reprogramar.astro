@@ -1,0 +1,182 @@
+---
+import { DateTime } from "luxon";
+import { z } from "zod";
+import Card from "../../../../components/taller/Card.astro";
+import PageHeader from "../../../../components/taller/PageHeader.astro";
+import TallerLayout from "../../../../layouts/TallerLayout.astro";
+import { bookingDetail } from "../../../../server/admin/agenda.ts";
+import { isAllowedOrigin } from "../../../../server/api/handlers.ts";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../../../server/auth/permissions.ts";
+import { rescheduleBooking } from "../../../../server/booking/reschedule-booking.ts";
+import { TIMEZONE } from "../../../../server/booking/rules.ts";
+import { localToday } from "../../../../server/booking/slots.ts";
+import { getDb } from "../../../../server/db/client.ts";
+import { freeBlocks, listUpcomingBookings } from "../../../../server/taller/manual-booking.ts";
+
+export const prerender = false;
+const db = getDb();
+const now = new Date();
+const user = await requireAdmin(db, Astro.cookies.get(SESSION_COOKIE)?.value, now);
+if (!user)
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location: loginRedirect(Astro.url.pathname + Astro.url.search),
+      "cache-control": "no-store",
+    },
+  });
+if (!can(user.role, "bookings.manage")) return forbiddenResponse();
+Astro.response.headers.set("cache-control", "no-store");
+const isPost = Astro.request.method === "POST";
+if (isPost && !isAllowedOrigin(Astro.request)) return forbiddenResponse();
+const bookingId = z.uuid().safeParse(Astro.params.id);
+const booking = bookingId.success ? await bookingDetail(db, bookingId.data) : null;
+if (!booking)
+  return new Response("Reserva no encontrada.", {
+    status: 404,
+    headers: { "cache-control": "no-store" },
+  });
+const PATH = `/taller/reservas/${booking.id}/reprogramar`;
+// Si la reserva ya tiene orden, no se reprograma. Se pregunta por `listUpcomingBookings`, que ya
+// trae el `orderId`, en vez de consultar `work_orders` aquí: una página no escribe SQL propio
+// (frontera de CLAUDE.md). La ventana parte en el día de la reserva, así que una reserva de un día
+// que ya pasó —el caso que motivó esto— también se encuentra. `rescheduleBooking` lo revalida igual.
+const current =
+  booking.status === "confirmed"
+    ? (await listUpcomingBookings(db, booking.serviceDate, 1)).find((row) => row.id === booking.id)
+    : null;
+let reschedulable = booking.status === "confirmed" && current?.orderId === null;
+const unavailableMessage = "Esta reserva ya no se puede reprogramar.";
+const selectionSchema = z.object({ service_date: z.iso.date("Elige una fecha válida.") });
+const rescheduleSchema = selectionSchema.extend({
+  start: z.string().regex(/^(?:[01]\d|2[0-3]):(?:00|30)$/, "Elige un bloque."),
+});
+let values: Record<string, string> = {
+  service_date: Astro.url.searchParams.get("service_date") ?? localToday(now),
+};
+const fieldErrors: Record<string, string> = {};
+let error = "";
+if (!reschedulable) {
+  Astro.response.status = 409;
+  error = unavailableMessage;
+} else if (isPost) {
+  const form = await Astro.request.formData();
+  values = Object.fromEntries([...form].map(([key, value]) => [key, String(value)]));
+  const parsed = rescheduleSchema.safeParse(values);
+  if (!parsed.success) {
+    Astro.response.status = 422;
+    error = "Revisa los datos de la reserva.";
+    for (const issue of parsed.error.issues)
+      fieldErrors[String(issue.path[0] ?? "formulario")] ??= issue.message;
+  } else {
+    const result = await rescheduleBooking(
+      db,
+      user,
+      {
+        bookingId: booking.id,
+        serviceDate: parsed.data.service_date,
+        start: parsed.data.start,
+      },
+      now,
+    );
+    if (result.ok)
+      return new Response(null, {
+        status: 303,
+        headers: {
+          location: `/taller/reservas?hecho=reprogramada&fecha=${parsed.data.service_date}&hora=${parsed.data.start}`,
+          "cache-control": "no-store",
+        },
+      });
+    if (result.code === "forbidden") return forbiddenResponse();
+    if (result.code === "not_found")
+      return new Response("Reserva no encontrada.", {
+        status: 404,
+        headers: { "cache-control": "no-store" },
+      });
+    const messages = {
+      not_reschedulable: unavailableMessage,
+      unchanged: "Elige un día o una hora distintos a los actuales.",
+      slot_unavailable: "El bloque ya no está disponible. Elige otro bloque o día.",
+      phone_limit: "Este cliente ya tiene otra reserva próxima. Revisa la agenda.",
+    };
+    Astro.response.status =
+      result.code === "unchanged" || result.code === "slot_unavailable" ? 422 : 409;
+    error = messages[result.code];
+    if (result.code === "not_reschedulable") reschedulable = false;
+    if (result.code === "slot_unavailable") fieldErrors.start = error;
+  }
+}
+const selected = selectionSchema.safeParse(values);
+const requested = isPost || Astro.url.searchParams.has("service_date");
+if (reschedulable && requested && !selected.success) {
+  Astro.response.status = 422;
+  error = "Revisa la fecha de la reserva.";
+  for (const issue of selected.error.issues) fieldErrors[String(issue.path[0])] ??= issue.message;
+}
+const blocks =
+  reschedulable && requested && selected.success
+    ? await freeBlocks(
+        db,
+        selected.data.service_date,
+        booking.mode === "retiro" ? "retiro" : "taller",
+        now,
+      )
+    : [];
+const currentDate = DateTime.fromISO(booking.serviceDate, { zone: TIMEZONE })
+  .setLocale("es")
+  .toFormat("cccc d 'de' LLLL 'de' yyyy");
+const currentTime = DateTime.fromJSDate(booking.startsAt).setZone(TIMEZONE).toFormat("HH:mm");
+---
+
+<TallerLayout title="Reprogramar reserva — Vector Bikes" description="Cambiar el día y bloque de una reserva." path="/taller/reservas" user={user}>
+  <div class="stack">
+    <PageHeader title="Reprogramar reserva">
+      <a slot="actions" href="/taller/reservas">Volver a reservas</a>
+    </PageHeader>
+    <Card title="Reserva actual" id="current-booking">
+      <dl class="data">
+        <dt>Código</dt><dd>{booking.code}</dd>
+        <dt>Cliente</dt><dd>{booking.customerName}</dd>
+        <dt>Bicicleta</dt><dd>{booking.bike}</dd>
+        <dt>Modalidad</dt><dd>{booking.mode === "retiro" ? "Retiro a domicilio" : "Entrega en taller"}</dd>
+        <dt>Día</dt><dd>{currentDate}</dd>
+        <dt>Hora</dt><dd>{currentTime}</dd>
+      </dl>
+    </Card>
+    {error && <p role="alert">{error}</p>}
+    {reschedulable && (
+      <>
+        <Card><form method="get" action={PATH}>
+          <div class="fields">
+            <div class="field">
+              <label for="service_date">Día</label>
+              <input id="service_date" name="service_date" type="date" required value={values.service_date} aria-invalid={Boolean(fieldErrors.service_date)} aria-describedby={fieldErrors.service_date ? "service_date-error" : undefined} />
+              {fieldErrors.service_date && <p id="service_date-error">{fieldErrors.service_date}</p>}
+            </div>
+          </div>
+          <button type="submit" class="btn ghost">Ver bloques libres</button>
+        </form></Card>
+        {requested && selected.success && (
+          <>
+            {blocks.length === 0 && <p role="status">No hay bloques libres para este día. Elige otro día.</p>}
+            <Card><form method="post" action={PATH}>
+              <input type="hidden" name="service_date" value={selected.data.service_date} />
+              <div class="fields">
+                <div class="field">
+                  <label for="start">Bloque disponible</label>
+                  <select id="start" name="start" required aria-invalid={Boolean(fieldErrors.start)} aria-describedby={fieldErrors.start ? "start-error" : undefined}>
+                    <option value="">Elige un bloque</option>
+                    {blocks.map((block) => <option value={block.start} selected={values.start === block.start}>{block.start}</option>)}
+                  </select>
+                  {fieldErrors.start && <p id="start-error">{fieldErrors.start}</p>}
+                </div>
+              </div>
+              <button type="submit" class="btn" disabled={blocks.length === 0}>Reprogramar reserva</button>
+            </form></Card>
+          </>
+        )}
+      </>
+    )}
+  </div>
+</TallerLayout>

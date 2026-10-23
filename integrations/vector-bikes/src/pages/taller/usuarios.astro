@@ -1,0 +1,275 @@
+---
+import { z } from "zod";
+import Card from "../../components/taller/Card.astro";
+import PageHeader from "../../components/taller/PageHeader.astro";
+import TallerLayout from "../../layouts/TallerLayout.astro";
+import { isAllowedOrigin } from "../../server/api/handlers.ts";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../server/auth/admin-auth.ts";
+import {
+  can,
+  forbiddenResponse,
+  isRole,
+  ROLE_LABELS,
+  ROLES,
+} from "../../server/auth/permissions.ts";
+import { getDb } from "../../server/db/client.ts";
+import { listAudit } from "../../server/taller/audit.ts";
+import {
+  changeUserRole,
+  createUser,
+  listUsers,
+  resetUserPassword,
+  setUserActive,
+  userCreateSchema,
+} from "../../server/taller/users.ts";
+
+export const prerender = false;
+
+const db = getDb();
+const now = new Date();
+const user = await requireAdmin(db, Astro.cookies.get(SESSION_COOKIE)?.value, now);
+if (!user) {
+  const response = Astro.redirect(loginRedirect(Astro.url.pathname + Astro.url.search), 303);
+  response.headers.set("cache-control", "no-store");
+  return response;
+}
+if (!can(user.role, "users.manage")) return forbiddenResponse();
+Astro.response.headers.set("cache-control", "no-store");
+
+const PATH = "/taller/usuarios";
+const idSchema = z.object({ id: z.uuid() });
+const formSchema = z.discriminatedUnion("accion", [
+  userCreateSchema.extend({ accion: z.literal("crear") }),
+  idSchema.extend({ accion: z.literal("rol"), role: userCreateSchema.shape.role }),
+  idSchema.extend({ accion: z.literal("desactivar") }),
+  idSchema.extend({ accion: z.literal("activar") }),
+  idSchema.extend({ accion: z.literal("clave"), password: userCreateSchema.shape.password }),
+]);
+const notices: Record<string, string> = {
+  crear: "Usuario creado.",
+  rol: "Rol actualizado.",
+  desactivar: "Usuario desactivado.",
+  activar: "Usuario activado.",
+  clave: "Clave restablecida y sesiones revocadas.",
+};
+const errors = {
+  forbidden: "No tienes permiso para realizar esta acción.",
+  self_change: "No puedes modificar tu propio usuario desde esta pantalla.",
+  email_taken: "Ya existe un usuario con ese correo.",
+  last_owner: "Debe quedar al menos un dueño activo en la sucursal.",
+  not_found: "No encontramos ese usuario en tu sucursal.",
+} as const;
+const fieldMessages: Record<string, string> = {
+  name: "Ingresa un nombre de 2 a 80 caracteres.",
+  email: "Ingresa un correo válido.",
+  role: "Selecciona un rol válido.",
+  password: "La clave debe tener entre 12 y 1024 caracteres.",
+  id: "Selecciona un usuario válido.",
+  accion: "Selecciona una acción válida.",
+};
+const actionLabels: Record<string, string> = {
+  "user.created": "Usuario creado",
+  "user.role_changed": "Rol actualizado",
+  "user.deactivated": "Usuario desactivado",
+  "user.activated": "Usuario activado",
+  "user.password_reset": "Clave restablecida",
+};
+let error = "";
+let failedAction = "";
+let failedId = "";
+let values: Record<string, string> = {};
+const fieldErrors: Record<string, string> = {};
+
+async function applyAction(data: z.infer<typeof formSchema>) {
+  // La sesión ya fue validada al entrar a la página.
+  if (!user) return { ok: false, code: "forbidden" } as const;
+  switch (data.accion) {
+    case "crear":
+      return createUser(db, user, data, now);
+    case "rol":
+      return changeUserRole(db, user, data.id, data.role, now);
+    case "activar":
+      return setUserActive(db, user, data.id, true, now);
+    case "desactivar":
+      return setUserActive(db, user, data.id, false, now);
+    case "clave":
+      return resetUserPassword(db, user, data.id, data.password, now);
+  }
+}
+
+function fieldError(field: string, action: string, id = "") {
+  return failedAction === action && failedId === id ? fieldErrors[field] : undefined;
+}
+
+if (Astro.request.method === "POST") {
+  if (!isAllowedOrigin(Astro.request)) return forbiddenResponse();
+  const form = await Astro.request.formData();
+  const parsed = formSchema.safeParse(Object.fromEntries(form));
+  failedAction = String(form.get("accion") ?? "");
+  failedId = failedAction === "crear" ? "" : String(form.get("id") ?? "");
+  values = Object.fromEntries(
+    ["name", "email", "role"].map((key) => [key, String(form.get(key) ?? "")]),
+  );
+  if (!parsed.success) {
+    Astro.response.status = 422;
+    error = "Revisa los datos del formulario.";
+    for (const issue of parsed.error.issues) {
+      const field = String(issue.path[0] ?? "accion");
+      fieldErrors[field] = fieldMessages[field] ?? "Revisa este dato.";
+    }
+  } else {
+    const result = await applyAction(parsed.data);
+    if (result.ok)
+      return new Response(null, {
+        status: 303,
+        headers: { location: `${PATH}?hecho=${parsed.data.accion}`, "cache-control": "no-store" },
+      });
+    Astro.response.status =
+      result.code === "forbidden" ? 403 : result.code === "not_found" ? 404 : 409;
+    error = errors[result.code];
+    if (result.code === "email_taken") fieldErrors.email = error;
+    if (result.code === "last_owner") fieldErrors.role = error;
+  }
+}
+
+const listed = await listUsers(db, user);
+if (!listed.ok) return forbiddenResponse();
+const audit = await listAudit(db, user.branchId);
+const notice = notices[Astro.url.searchParams.get("hecho") ?? ""];
+const dateFormat = new Intl.DateTimeFormat("es-CL", {
+  dateStyle: "short",
+  timeStyle: "short",
+  timeZone: "America/Santiago",
+});
+function roleLabel(value: unknown) {
+  return isRole(value) ? ROLE_LABELS[value] : "—";
+}
+---
+
+<TallerLayout title="Usuarios — Vector Bikes" description="Usuarios y registro de auditoría del taller." path={PATH} user={user}>
+  <div class="stack">
+    <PageHeader title="Usuarios" />
+    {notice && <p role="status">{notice}</p>}
+    {error && <p role="alert" id="form-error">{error}</p>}
+
+    <Card title="Crear usuario">
+      <form method="post" action={PATH}>
+        <input type="hidden" name="accion" value="crear" />
+        <div class="fields">
+          <div class="field">
+            <label for="create-name">Nombre</label>
+            <input id="create-name" name="name" required minlength="2" maxlength="80" value={failedAction === "crear" ? values.name : ""} autocomplete="name" aria-invalid={Boolean(fieldError("name", "crear"))} aria-describedby={fieldError("name", "crear") ? "create-name-error" : undefined} />
+            {fieldError("name", "crear") && <p id="create-name-error">{fieldError("name", "crear")}</p>}
+          </div>
+          <div class="field">
+            <label for="create-email">Correo</label>
+            <input id="create-email" name="email" type="email" required value={failedAction === "crear" ? values.email : ""} autocomplete="email" aria-invalid={Boolean(fieldError("email", "crear"))} aria-describedby={fieldError("email", "crear") ? "create-email-error" : undefined} />
+            {fieldError("email", "crear") && <p id="create-email-error">{fieldError("email", "crear")}</p>}
+          </div>
+          <div class="field">
+            <label for="create-role">Rol</label>
+            <select id="create-role" name="role" required aria-invalid={Boolean(fieldError("role", "crear"))} aria-describedby={fieldError("role", "crear") ? "create-role-error" : undefined}>
+              {ROLES.map((role) => <option value={role} selected={role === (failedAction === "crear" ? values.role : "mechanic")}>{ROLE_LABELS[role]}</option>)}
+            </select>
+            {fieldError("role", "crear") && <p id="create-role-error">{fieldError("role", "crear")}</p>}
+          </div>
+          <div class="field">
+            <label for="create-password">Clave inicial</label>
+            <input id="create-password" name="password" type="password" required minlength="12" maxlength="1024" autocomplete="new-password" aria-invalid={Boolean(fieldError("password", "crear"))} aria-describedby={fieldError("password", "crear") ? "create-password-error" : "create-password-help"} />
+            <p class="muted" id="create-password-help">Entre 12 y 1024 caracteres.</p>
+            {fieldError("password", "crear") && <p id="create-password-error">{fieldError("password", "crear")}</p>}
+          </div>
+        </div>
+        <button type="submit" class="btn">Crear usuario</button>
+      </form>
+    </Card>
+    <Card title="Equipo del taller">
+      <div class="scroll-x">
+        <table class="dense">
+          <caption>Usuarios de tu sucursal</caption>
+          <thead><tr><th scope="col">Nombre y correo</th><th scope="col">Rol</th><th scope="col">Estado</th><th scope="col">Restablecer clave</th></tr></thead>
+          <tbody>
+            {listed.users.map((member) => (
+              <tr>
+                <th scope="row">{member.name}<br />{member.email}{member.id === user.id && <p class="muted">Tu usuario</p>}</th>
+                <td>
+                  <form method="post" action={PATH}>
+                    <fieldset disabled={member.id === user.id} class="field">
+                      <legend>Rol de {member.name}</legend>
+                      <input type="hidden" name="accion" value="rol" />
+                      <input type="hidden" name="id" value={member.id} />
+                      <label for={`role-${member.id}`}>Rol</label>
+                      <select id={`role-${member.id}`} name="role" required aria-invalid={Boolean(fieldError("role", "rol", member.id))} aria-describedby={fieldError("role", "rol", member.id) ? `role-error-${member.id}` : undefined}>
+                        {ROLES.map((role) => <option value={role} selected={role === (failedAction === "rol" && failedId === member.id ? values.role : member.role)}>{ROLE_LABELS[role]}</option>)}
+                      </select>
+                      {fieldError("role", "rol", member.id) && <p id={`role-error-${member.id}`}>{fieldError("role", "rol", member.id)}</p>}
+                      <button type="submit" class="btn">Guardar rol</button>
+                    </fieldset>
+                  </form>
+                </td>
+                <td>
+                  <p>{member.isActive ? "Activo" : "Inactivo"}</p>
+                  <form method="post" action={PATH}>
+                    <input type="hidden" name="accion" value={member.isActive ? "desactivar" : "activar"} />
+                    <input type="hidden" name="id" value={member.id} />
+                    <button type="submit" class="btn ghost" disabled={member.id === user.id} aria-describedby={failedId === member.id && ["activar", "desactivar"].includes(failedAction) && error ? "form-error" : undefined}>{member.isActive ? "Desactivar" : "Activar"}</button>
+                  </form>
+                </td>
+                <td>
+                  <form method="post" action={PATH}>
+                    <fieldset disabled={member.id === user.id} class="field">
+                      <legend>Clave de {member.name}</legend>
+                      <input type="hidden" name="accion" value="clave" />
+                      <input type="hidden" name="id" value={member.id} />
+                      <label for={`password-${member.id}`}>Nueva clave (mínimo 12 caracteres)</label>
+                      <input id={`password-${member.id}`} name="password" type="password" required minlength="12" maxlength="1024" autocomplete="new-password" aria-invalid={Boolean(fieldError("password", "clave", member.id))} aria-describedby={fieldError("password", "clave", member.id) ? `password-error-${member.id}` : undefined} />
+                      {fieldError("password", "clave", member.id) && <p id={`password-error-${member.id}`}>{fieldError("password", "clave", member.id)}</p>}
+                      <button type="submit" class="btn">Restablecer clave</button>
+                    </fieldset>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+    <Card title="Registro de auditoría">
+      <p class="muted">Últimos 100 cambios de tu sucursal.</p>
+      <div class="scroll-x">
+        <table class="dense">
+          <caption>Cambios registrados</caption>
+          <thead><tr><th scope="col">Fecha</th><th scope="col">Autor</th><th scope="col">Acción</th><th scope="col">Usuario</th><th scope="col">Rol anterior → nuevo</th></tr></thead>
+          <tbody>
+            {audit.map((entry) => (
+              <tr>
+                <td><time datetime={entry.createdAt.toISOString()}>{dateFormat.format(entry.createdAt)}</time></td>
+                <td>{entry.actorName ?? "Cliente"}</td>
+                <td>{actionLabels[entry.action] ?? "Cambio en el taller"}</td>
+                <td>{listed.users.find((member) => member.id === entry.entityId)?.name ?? "—"}</td>
+                <td>{roleLabel(entry.details.previousRole)} → {roleLabel(entry.details.role)}</td>
+              </tr>
+            ))}
+            {audit.length === 0 && <tr><td class="muted" colspan="5">Aún no hay cambios registrados.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  </div>
+</TallerLayout>
+
+<style is:global>
+  /*
+   * Tu propia fila no se puede desactivar ni cambiar de rol: el fieldset y el
+   * botón van `disabled` y sin esto se ven idénticos a los activos. Duplica la
+   * regla de ordenes/[id]/index.astro porque taller.css está en su tope de
+   * líneas; cuando ese tope se revise, las dos se consolidan ahí. Solo tokens.
+   */
+  .taller :disabled,
+  .taller fieldset:disabled {
+    border-color: var(--rule);
+    background: var(--hatch);
+    color: var(--steel);
+    cursor: not-allowed;
+  }
+</style>

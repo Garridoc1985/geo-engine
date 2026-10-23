@@ -1,0 +1,338 @@
+---
+import { DateTime } from "luxon";
+import { z } from "zod";
+import BookingActions from "../../../components/admin/BookingActions.astro";
+import Card from "../../../components/taller/Card.astro";
+import PageHeader from "../../../components/taller/PageHeader.astro";
+import TallerLayout from "../../../layouts/TallerLayout.astro";
+import {
+  adminActionSchema,
+  applyAdminAction,
+  bookingDetail,
+  STATUS_LABELS,
+  timeRange,
+} from "../../../server/admin/agenda.ts";
+import { isAllowedOrigin } from "../../../server/api/handlers.ts";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../../server/auth/permissions.ts";
+import { TIMEZONE } from "../../../server/booking/rules.ts";
+import { getDb } from "../../../server/db/client.ts";
+import { formatClp } from "../../../server/email/templates.ts";
+import {
+  listNotices,
+  reconcileNotice,
+  whatsappAvailability,
+} from "../../../server/whatsapp/service.ts";
+
+export const prerender = false;
+
+const admin = await requireAdmin(getDb(), Astro.cookies.get(SESSION_COOKIE)?.value, new Date());
+if (!admin) return Astro.redirect(loginRedirect(Astro.url.pathname + Astro.url.search), 303);
+if (!can(admin.role, "admin.panel")) return forbiddenResponse();
+
+Astro.response.headers.set("cache-control", "no-store");
+
+const id = Astro.params.id ?? "";
+let error: string | null = null;
+const reconcileFormSchema = z
+  .object({
+    tipo: z.enum(["reminder", "ready"]),
+    outcome: z.enum(["sent", "not_sent"]),
+    evidence: z
+      .string()
+      .trim()
+      .min(10, "Describe la verificación (mínimo 10 caracteres).")
+      .max(1000, "La evidencia no puede superar 1000 caracteres."),
+    metaMessageId: z.string().trim().max(200, "El ID de Meta es demasiado largo."),
+    verified: z.literal("true", "Confirma que verificaste el resultado en Meta."),
+    workerStopped: z.literal("true", "Confirma que el proceso de envío se detuvo."),
+  })
+  .superRefine((value, ctx) => {
+    if (value.outcome === "sent" && !value.metaMessageId) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["metaMessageId"],
+        message: "Ingresa el ID del mensaje de Meta para confirmar un envío.",
+      });
+    }
+  });
+
+if (Astro.request.method === "POST") {
+  if (!isAllowedOrigin(Astro.request)) {
+    Astro.response.status = 403;
+    error = "No pudimos confirmar la solicitud. Recarga la página e intenta de nuevo.";
+  } else {
+    const form = await Astro.request.formData();
+    if (form.get("accion") === "resolver_whatsapp") {
+      const reconciliation = reconcileFormSchema.safeParse({
+        tipo: form.get("tipo"),
+        outcome: form.get("outcome"),
+        evidence: form.get("evidence"),
+        metaMessageId: form.get("metaMessageId"),
+        verified: form.get("verificado"),
+        workerStopped: form.get("worker_stopped"),
+      });
+      if (!reconciliation.success) {
+        Astro.response.status = 400;
+        error = reconciliation.error.issues[0]?.message ?? "Completa los datos de verificación.";
+      } else if (!z.uuid().safeParse(id).success) {
+        Astro.response.status = 404;
+        error = "Reserva no encontrada.";
+      } else {
+        const resolved = await reconcileNotice(
+          getDb(),
+          id,
+          reconciliation.data.tipo,
+          reconciliation.data.outcome,
+          reconciliation.data.evidence,
+          reconciliation.data.metaMessageId || null,
+          new Date(),
+          true,
+        );
+        if (resolved) {
+          return Astro.redirect(`/admin/reservas/${id}?hecho=resolver_whatsapp`, 303);
+        }
+        Astro.response.status = 409;
+        error = "La notificación ya no es elegible para conciliación. Recarga el detalle.";
+      }
+    } else {
+      const action = adminActionSchema.safeParse(form.get("accion"));
+      const result = action.success
+        ? await applyAdminAction(getDb(), id, action.data, new Date())
+        : ({ ok: false, code: "invalid_transition" } as const);
+      if (result.ok && action.success) {
+        return Astro.redirect(`/admin/reservas/${id}?hecho=${action.data}`, 303);
+      }
+      if (!result.ok && result.code === "not_found") {
+        Astro.response.status = 404;
+      } else {
+        Astro.response.status = 409;
+        error = "Esta acción no aplica al estado actual de la reserva.";
+      }
+    }
+  }
+}
+
+const booking = await bookingDetail(getDb(), id);
+if (!booking) {
+  Astro.response.status = 404;
+}
+const notices = booking ? await listNotices(getDb(), booking.id) : [];
+const whatsappConfig = whatsappAvailability();
+const readyNotice = notices.find((notice) => notice.type === "ready");
+const reminderNotice = notices.find((notice) => notice.type === "reminder");
+const canRetryReady =
+  booking?.status === "ready_for_pickup" &&
+  Boolean(booking.whatsappConsentAt) &&
+  (!readyNotice || readyNotice.status === "failed");
+const canRetryReminder =
+  booking?.status === "confirmed" &&
+  Boolean(booking.whatsappConsentAt) &&
+  booking.startsAt.getTime() > Date.now() &&
+  reminderNotice?.status === "failed";
+
+const DONE: Record<string, string> = {
+  cancelar: "Reserva cancelada.",
+  completar: "Reserva marcada como completada.",
+  no_show: "Reserva marcada como no-show.",
+  lista_para_retirar: "Reserva marcada como lista para retirar.",
+  reintentar_whatsapp: "Se volvió a intentar la notificación por WhatsApp.",
+  reintentar_recordatorio_whatsapp: "Se volvió a intentar el recordatorio por WhatsApp.",
+  resolver_whatsapp: "El resultado de la notificación fue conciliado.",
+};
+const done = DONE[Astro.url.searchParams.get("hecho") ?? ""] ?? null;
+const localDate = (instant: Date) =>
+  DateTime.fromJSDate(instant).setZone(TIMEZONE).toFormat("yyyy-MM-dd HH:mm");
+const noticeStatusLabel: Record<string, string> = {
+  pending: "Pendiente",
+  sending: "En curso",
+  sent: "Enviado",
+  failed: "Fallido",
+  unknown: "Resultado incierto",
+};
+---
+
+<TallerLayout
+  title="Reserva — Vector Bikes"
+  description="Detalle de una reserva."
+  path="/admin"
+  user={admin}
+>
+  <div class="stack">
+    <PageHeader title={booking ? booking.code : "Reserva no encontrada"} subtitle="Detalle" />
+    {error && <p role="alert" style="margin-bottom:20px;font-weight:600">{error}</p>}
+    {done && <p role="status" style="margin-bottom:20px;font-weight:600">{done}</p>}
+    {
+      booking ? (
+        <Card>
+          <dl class="ticket-body">
+            <div class="row">
+              <dt>Estado</dt>
+              <dd>{STATUS_LABELS[booking.status] ?? booking.status}</dd>
+            </div>
+            <div class="row">
+              <dt>Día</dt>
+              <dd class="mono">{booking.serviceDate}</dd>
+            </div>
+            <div class="row">
+              <dt>Hora</dt>
+              <dd class="mono">{timeRange(booking)}</dd>
+            </div>
+            <div class="row">
+              <dt>Modalidad</dt>
+              <dd>{booking.mode === "retiro" ? "Retiro y devolución" : "La deja en el taller"}</dd>
+            </div>
+            <div class="row">
+              <dt>Nombre</dt>
+              <dd>{booking.customerName}</dd>
+            </div>
+            <div class="row">
+              <dt>Teléfono</dt>
+              <dd>
+                <a href={`tel:${booking.phoneE164}`}>{booking.phoneE164}</a>
+              </dd>
+            </div>
+            <div class="row">
+              <dt>Correo</dt>
+              <dd>
+                {booking.email ? <a href={`mailto:${booking.email}`}>{booking.email}</a> : "Sin correo"}
+              </dd>
+            </div>
+            <div class="row">
+              <dt>Bicicleta</dt>
+              <dd>{booking.bike}</dd>
+            </div>
+            <div class="row">
+              <dt>Qué necesita</dt>
+              <dd>{booking.description}</dd>
+            </div>
+            <div class="row">
+              <dt>Comuna / dirección</dt>
+              <dd>{booking.comuna ? `${booking.comuna} / ${booking.address ?? ""}` : "—"}</dd>
+            </div>
+            <div class="row">
+              <dt>Consentimiento</dt>
+              <dd class="mono">{localDate(booking.consentAt)}</dd>
+            </div>
+            <div class="row">
+              <dt>Consentimiento WhatsApp</dt>
+              <dd class="mono">
+                {booking.whatsappConsentAt ? localDate(booking.whatsappConsentAt) : "No otorgado"}
+              </dd>
+            </div>
+            {
+              booking.cancelledAt && (
+                <div class="row">
+                  <dt>Cancelada</dt>
+                  <dd class="mono">
+                    {localDate(booking.cancelledAt)} ({booking.cancelledBy === "admin" ? "taller" : "cliente"})
+                  </dd>
+                </div>
+              )
+            }
+          </dl>
+          <section aria-labelledby="whatsapp-notices-title" style="padding:20px 24px;border-top:1px solid var(--line,#ddd)">
+            <h2 id="whatsapp-notices-title" style="font-size:1rem;margin:0 0 12px">Notificaciones WhatsApp</h2>
+            <p>{whatsappConfig.reason}</p>
+            {
+              notices.length === 0 ? (
+                <p style="margin:0">Sin intentos de notificación registrados.</p>
+              ) : (
+                <ul style="display:grid;gap:12px;list-style:none;padding:0;margin:0">
+                  {notices.map((notice) => (
+                    <li style="display:grid;gap:4px">
+                      <strong>{notice.type === "reminder" ? "Recordatorio de reserva" : "Bicicleta lista para retirar"}</strong>
+                      <span>Estado: {noticeStatusLabel[notice.status] ?? notice.status} · Intentos: {notice.attempts}</span>
+                      <span>Registro: {localDate(notice.createdAt)}</span>
+                      {notice.sentAt && <span>Enviado: {localDate(notice.sentAt)}</span>}
+                      {notice.metaMessageId && <span class="mono">ID Meta: {notice.metaMessageId}</span>}
+                      {notice.reason && <span>{notice.reason}</span>}
+                      {notice.reconciliationNote && (
+                        <span>Conciliación: {notice.reconciliationNote}</span>
+                      )}
+                      {notice.status === "unknown" && (
+                        <strong role="alert">
+                          Verifica el resultado en Meta antes de reintentar. No se reintentará automáticamente.
+                        </strong>
+                      )}
+                      {notice.canReconcile && (
+                        <form method="post" style="display:grid;gap:10px;margin-top:8px">
+                          <input type="hidden" name="accion" value="resolver_whatsapp" />
+                          <input type="hidden" name="tipo" value={notice.type} />
+                          <label>
+                            Resultado comprobado en Meta
+                            <select name="outcome" required>
+                              <option value="sent">Meta confirma que fue enviado</option>
+                              <option value="not_sent">Meta confirma que no fue aceptado</option>
+                            </select>
+                          </label>
+                          <label>
+                            ID del mensaje de Meta (obligatorio si fue enviado)
+                            <input
+                              type="text"
+                              name="metaMessageId"
+                              maxlength="200"
+                              autocomplete="off"
+                            />
+                          </label>
+                          <label>
+                            Evidencia de verificación
+                            <textarea
+                              name="evidence"
+                              minlength="10"
+                              maxlength="1000"
+                              required
+                              rows="3"
+                            ></textarea>
+                          </label>
+                          <p role="note" style="margin:0">
+                            No marques “no aceptado” solo porque hubo un timeout. Comprueba el resultado real en Meta.
+                          </p>
+                          <p role="note" style="margin:0">
+                            No confirmes solo porque haya transcurrido tiempo: el proceso de envío o la ejecución del cron externo debe haber terminado o haberse detenido.
+                          </p>
+                          <label style="display:flex;gap:8px;align-items:flex-start">
+                            <input type="checkbox" name="verificado" value="true" required />
+                            Verifiqué el resultado real de esta notificación en Meta.
+                          </label>
+                          <label style="display:flex;gap:8px;align-items:flex-start">
+                            <input type="checkbox" name="worker_stopped" value="true" required />
+                            Confirmo que el proceso de envío y cualquier ejecución del cron externo terminaron o fueron detenidos.
+                          </label>
+                          <button type="submit" class="btn ghost">Guardar conciliación manual</button>
+                        </form>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )
+            }
+          </section>
+          <div class="ticket-total">
+            <span class="label">Recargo</span>
+            <strong>{formatClp(booking.pickupFeeClp)}</strong>
+          </div>
+          <BookingActions id={booking.id} status={booking.status} canRetryReminder={canRetryReminder} canRetryReady={canRetryReady} />
+        </Card>
+      ) : (
+        <p>
+          <a href="/admin">Volver a la agenda</a>
+        </p>
+      )
+    }
+  </div>
+</TallerLayout>
+
+<style is:global>
+  /* La columna de etiquetas de `.row` mide 96px en `global.css`, pensada para el ancho del sitio.
+     Dentro de la tarjeta del taller, "CONSENTIMIENTO" no cabe y se montaba sobre su valor. */
+  .taller .ticket-body .row {
+    grid-template-columns: 140px 1fr;
+  }
+  /* "Reprogramar" es un enlace entre botones: sin esto sale en 600 y 0.92rem, y los `button`
+     vecinos en 400 y 1rem, así que parecía el botón destacado del grupo sin serlo. */
+  .taller .ticket-foot .btn {
+    font-size: 1rem;
+    font-weight: 400;
+  }
+</style>

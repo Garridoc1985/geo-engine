@@ -1,0 +1,28 @@
+---
+interface Props {
+  /** Con título se emite `<section aria-labelledby>` + `<h2 id>`, como ya hacían las páginas. */
+  title?: string;
+  id?: string;
+  as?: "section" | "div";
+  label?: string;
+}
+
+const { title, id, as, label } = Astro.props;
+const Tag = as ?? (title || label ? "section" : "div");
+---
+
+<Tag class="card taller-card" aria-labelledby={title && id ? id : undefined} aria-label={label}>
+  {title && <h2 id={id}>{title}</h2>}
+  <slot />
+</Tag>
+
+<style is:global>
+  .taller .taller-card {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+  }
+  .taller .taller-card > h2 {
+    font-size: 1.05rem;
+  }
+</style>

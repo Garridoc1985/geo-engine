@@ -1,0 +1,215 @@
+---
+import BookingIsland from "./islands/BookingIsland.tsx";
+import { FAQ } from "../lib/faq.ts";
+import { SITE, whatsappHref } from "../lib/site.ts";
+
+interface Props {
+  siteKey: string;
+  bookingEnabled?: boolean;
+}
+
+const { siteKey, bookingEnabled = true } = Astro.props;
+
+/** Misma geometría que `drawScale` del prototipo: eje 10:00–20:00, tick cada 30 min. */
+const AXIS_FROM = 10 * 60;
+const AXIS_SPAN = 10 * 60;
+
+function segment(from: number, to: number) {
+  return {
+    left: ((from - AXIS_FROM) / AXIS_SPAN) * 100,
+    width: ((to - from) / AXIS_SPAN) * 100,
+  };
+}
+
+const ticks = Array.from({ length: AXIS_SPAN / 30 + 1 }, (_, index) => {
+  const minutes = AXIS_FROM + index * 30;
+  return { left: ((minutes - AXIS_FROM) / AXIS_SPAN) * 100, major: minutes % 60 === 0 };
+});
+
+const week = segment(15 * 60, 20 * 60);
+const saturday = segment(10 * 60, 14 * 60);
+/** Mismo origen que el botón flotante de Base.astro: el entorno, no SITE. */
+const whatsapp = whatsappHref(import.meta.env.PUBLIC_WHATSAPP_NUMBER);
+const numbers = [10, 12, 14, 16, 18, 20].map((hour) => ({
+  left: ((hour - 10) / 10) * 100,
+  label: `${hour}:00`,
+}));
+---
+
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <span class="label">Taller de bicicletas · Vitacura</span>
+      <h1>{bookingEnabled ? "Mecánica de precisión." : "Taller de bicicletas en Vitacura."}</h1>
+      <p class="lede">{bookingEnabled ? "Reserva tu hora, déjala en nuestro local o te la vamos a buscar." : "Vector Bikes · Avenida Kennedy 7666. Retiro y devolución en Vitacura y Las Condes."}</p>
+      <div class="actions">
+        <a href={bookingEnabled ? "#reservar" : `tel:${SITE.phone}`} class="btn">{bookingEnabled ? "Reservar hora" : "Consultar por teléfono"}</a>
+        <a href="#retiro" class="btn ghost">Retiro y devolución · $15.000</a>
+      </div>
+      <div class="hours" aria-label="Horario de recepción">
+        <div class="hours-row">
+          <span class="label">Lun–Vie</span>
+          <div class="scale">
+            <div class="seg" style={`left:${week.left}%;width:${week.width}%`}></div>
+            {
+              ticks.map((tick) => (
+                <div class={tick.major ? "tick major" : "tick"} style={`left:${tick.left}%`} />
+              ))
+            }
+          </div>
+        </div>
+        <div class="hours-row">
+          <span class="label">Sáb</span>
+          <div class="scale">
+            <div class="seg" style={`left:${saturday.left}%;width:${saturday.width}%`}></div>
+            {
+              ticks.map((tick) => (
+                <div class={tick.major ? "tick major" : "tick"} style={`left:${tick.left}%`} />
+              ))
+            }
+          </div>
+        </div>
+        <div class="scale-axis">
+          <span></span>
+          <div class="nums mono">
+            {numbers.map((num) => <span style={`left:${num.left}%`}>{num.label}</span>)}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="drawing" aria-hidden="true">
+      <div class="mark"></div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="como-funciona">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="label">Cómo funciona</span>
+      <div>
+        <h2>Reservas, la dejas y te avisamos.</h2>
+        <p>
+          Sin filas y sin sorpresas en la cuenta: si aparece algo que no estaba en tu descripción, te
+          llamamos antes de hacerlo.
+        </p>
+      </div>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <span class="n">1 / 3</span>
+        <h3>Eliges tu bloque</h3>
+        <p>Bloques de 30 minutos. Nos cuentas qué le pasa a tu bici o qué quieres hacerle.</p>
+      </div>
+      <div class="step">
+        <span class="n">2 / 3</span>
+        <h3>Revisamos y te llamamos</h3>
+        <p>
+          Si encontramos un problema extra, te explicamos la solución y tú decides. Puede o no tener
+          costo.
+        </p>
+      </div>
+      <div class="step">
+        <span class="n">3 / 3</span>
+        <h3>Retiras y pagas</h3>
+        <p>Efectivo, transferencia o tarjeta, cuando recibes tu bici lista.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="reservar" data-site-key={siteKey}>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="label">Reservar hora</span>
+      <div>
+        <h2>Elige día y bloque.</h2>
+        <p>
+          Recibimos bicicletas de lunes a viernes de 15:00 a 20:00 y los sábados de 10:00 a 14:00.
+          El retiro a domicilio parte a las 09:00 de lunes a viernes. Puedes reservar desde dos horas
+          antes y hasta 30 días adelante.
+        </p>
+      </div>
+    </div>
+    {bookingEnabled ? <Fragment><noscript>
+      <p class="ruler-note">
+        Para reservar en línea necesitas activar JavaScript. También puedes escribirnos por WhatsApp
+        o llamar al taller.
+      </p>
+      {whatsapp && (
+        <a class="btn ghost" href={whatsapp} rel="noopener" target="_blank">
+          Escribir por WhatsApp
+        </a>
+      )}
+      <a class="btn ghost" href={`tel:${SITE.phone}`}>Llamar al taller</a>
+    </noscript>
+    <BookingIsland client:visible siteKey={siteKey} /></Fragment> : <p role="status">Las reservas en línea no están habilitadas. Consulta disponibilidad por teléfono. No ingreses datos personales.</p>}
+  </div>
+</section>
+
+<section class="section" id="retiro">
+  <div class="wrap split">
+    <div>
+      <span class="label">Retiro a domicilio</span>
+      <p class="big-price mono">$15.000</p>
+      <h2
+        class="sec-title"
+        style="font-family:var(--display);font-weight:400;font-size:clamp(1.3rem,2.4vw,1.8rem);line-height:1.25"
+      >
+        Vamos a buscarla y te la devolvemos.
+      </h2>
+      <p style="margin-top:14px;color:var(--ink-2);max-width:48ch">
+        Reservas igual que en el taller y eliges retiro. Pasamos en el bloque que elegiste y
+        coordinamos la devolución por teléfono cuando esté lista.
+      </p>
+    </div>
+    <dl class="spec">
+      <div class="row"><dt>Cobertura</dt><dd>Vitacura y Las Condes</dd></div>
+      <div class="row"><dt>Incluye</dt><dd>Retiro y devolución</dd></div>
+      <div class="row"><dt>Duración</dt><dd>Ocupa 1 hora de agenda (2 bloques)</dd></div>
+      <div class="row"><dt>Pago</dt><dd>Al devolverla. Llevamos POS para tarjeta</dd></div>
+    </dl>
+  </div>
+</section>
+
+<section class="section" id="taller">
+  <div class="wrap split">
+    <div>
+      <h2 class="label">Taller</h2>
+      <p class="addr" style="margin-top:14px">Avenida Kennedy 7666<br />Vitacura, Santiago</p>
+      <p style="margin-top:12px">
+        <a href={SITE.mapsUrl} rel="noopener" target="_blank">Abrir en Google Maps ↗</a>
+      </p>
+      <p style="margin-top:12px">
+        <a href={`tel:${SITE.phone}`}>{SITE.phoneDisplay}</a>
+      </p>
+    </div>
+    <div>
+      <span class="label">Horario de recepción</span>
+      <table class="hours-table">
+        <tr><th scope="row">Lunes a viernes</th><td>15:00 – 20:00</td></tr>
+        <tr><th scope="row">Sábado</th><td>10:00 – 14:00</td></tr>
+        <tr><th scope="row">Domingo y feriados</th><td>Cerrado</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="preguntas">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="label">Preguntas</span>
+      <div><h2>Antes de reservar.</h2></div>
+    </div>
+    <div class="faq">
+      {
+        FAQ.map(({ q, a }, index) => (
+          <details open={index === 0}>
+            <summary>{q}</summary>
+            <p>{a}</p>
+          </details>
+        ))
+      }
+    </div>
+  </div>
+</section>

@@ -1,0 +1,398 @@
+/* Estilos del área /taller. Mismos tokens de global.css; todo cuelga de .taller. */
+.taller {
+  min-height: 100vh;
+  background: var(--ground);
+  color: var(--ink);
+}
+.taller a,
+.taller button,
+.taller select,
+.taller textarea,
+.taller input:not([type="radio"]):not([type="checkbox"]):not([type="hidden"]) {
+  min-height: 48px;
+  min-width: 48px;
+}
+.taller a {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 12px;
+  text-underline-offset: 4px;
+}
+.taller button,
+.taller select,
+.taller textarea,
+.taller input:not([type="radio"]):not([type="checkbox"]):not([type="hidden"]) {
+  padding: 10px 12px;
+  border: 1px solid var(--field-border);
+  border-radius: 2px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+.taller .taller-aside {
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
+}
+.taller .taller-id {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 12px clamp(16px, 4vw, 40px);
+}
+.taller .taller-brand {
+  font-family: var(--display);
+  font-size: 0.95rem;
+}
+.taller .taller-user {
+  color: var(--ink-2);
+  font-size: 0.9rem;
+}
+.taller .role {
+  font-weight: 600;
+}
+.taller .taller-toggle {
+  margin-inline-start: auto;
+  font-weight: 600;
+}
+/* Panel nativo: cerrado lo esconde el navegador; abierto es un cajón a la izquierda. */
+.taller .taller-panel {
+  inset: 0 auto 0 0;
+  width: min(300px, 86vw);
+  max-width: none;
+  max-height: none;
+  height: 100%;
+  overflow-y: auto;
+  padding: 16px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.taller .taller-panel:popover-open {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.taller .taller-close {
+  align-self: flex-start;
+}
+.taller .taller-group + .taller-group {
+  margin-top: 20px;
+}
+.taller .taller-group ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.taller .taller-group li + li {
+  margin-top: 4px;
+}
+.taller .taller-panel nav a {
+  display: flex;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  color: var(--ink-2);
+  text-decoration: none;
+  transition:
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.taller .taller-panel nav a:hover {
+  border-color: var(--field-border);
+  color: var(--ink);
+}
+.taller .taller-panel nav a[aria-current="page"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-weight: 600;
+}
+.taller .taller-exit {
+  margin: 0;
+  margin-block-start: auto;
+  padding-block-start: 16px;
+}
+.taller .taller-exit button {
+  width: 100%;
+}
+.taller .taller-content {
+  width: 100%;
+  max-width: 1180px;
+  margin-inline: auto;
+  padding: 32px clamp(16px, 4vw, 40px);
+}
+/* Superficie con regla de 1px; la comparten las pantallas del área. */
+.taller .card {
+  padding: 16px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--surface);
+}
+/* Avisos: el borde los distingue sin depender del color. */
+.taller [role="status"],
+.taller [role="alert"] {
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-inline-start: 3px solid var(--ink);
+  border-radius: 2px;
+  background: var(--surface);
+}
+.taller [role="alert"] {
+  border-inline-start-style: double;
+  border-inline-start-width: 6px;
+}
+.taller [role="alert"] ul {
+  margin: 0;
+  padding-inline-start: 18px;
+}
+/* Texto secundario: vacíos, ayudas y notas. */
+.taller .muted,
+.taller .data dt {
+  color: var(--steel);
+}
+/* Tabla ancha: hace scroll ella, no la página. */
+.taller .scroll-x {
+  overflow-x: auto;
+}
+.taller .log {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* Pares etiqueta/valor; la usan el detalle y la entrega. */
+.taller .data {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+}
+.taller .data dt {
+  color: var(--steel);
+}
+.taller .data dd {
+  margin: 0;
+}
+/* Pila vertical de las páginas del área. */
+.taller .stack {
+  display: grid;
+  /* minmax(0,…) o los hijos anchos ensanchan la página en vez de hacer scroll. */
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 16px;
+}
+@media (min-width: 1024px) {
+  .taller {
+    --aside-w: 240px;
+    --aside-pad-y: 24px;
+    --aside-pad-x: 16px;
+    --aside-gap: 24px;
+    /* Alto fijo del bloque de identidad: de él cuelga el borde superior del panel. */
+    --aside-head: 56px;
+    display: grid;
+    grid-template-columns: var(--aside-w) minmax(0, 1fr);
+  }
+  .taller .taller-aside {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    padding: var(--aside-pad-y) var(--aside-pad-x);
+    border-bottom: 0;
+    border-inline-end: 1px solid var(--rule);
+  }
+  .taller .taller-id {
+    display: block;
+    height: var(--aside-head);
+    padding: 0;
+  }
+  .taller .taller-brand,
+  .taller .taller-user {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .taller .taller-user {
+    margin-block-start: 8px;
+  }
+  .taller .taller-toggle,
+  .taller .taller-close {
+    display: none;
+  }
+  /*
+   * El panel se fija bajo la identidad, abierto o cerrado: así el estado
+   * :popover-open (capa superior) se ve igual que la columna y no la tapa
+   * al pasar de tablet a escritorio con el menú abierto.
+   */
+  .taller .taller-panel,
+  .taller .taller-panel:popover-open {
+    position: fixed;
+    top: calc(var(--aside-pad-y) + var(--aside-head) + var(--aside-gap));
+    bottom: var(--aside-pad-y);
+    left: var(--aside-pad-x);
+    display: flex;
+    flex-direction: column;
+    gap: var(--aside-gap);
+    width: calc(var(--aside-w) - 2 * var(--aside-pad-x));
+    height: auto;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+  }
+}
+.taller .btn {
+  background: var(--ink);
+  color: var(--on-ink);
+  border-color: var(--ink);
+}
+.taller .btn.ghost,
+.taller .btn:hover {
+  background: var(--surface);
+  color: var(--ink);
+}
+.taller .fields {
+  align-items: start;
+  gap: 16px;
+}
+.taller .field {
+  align-content: start;
+  gap: 8px;
+}
+.taller fieldset {
+  border: 1px solid var(--rule);
+  padding: 16px;
+  margin: 0;
+}
+.taller legend {
+  font-weight: 600;
+}
+.taller .options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.taller .options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  min-width: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--field-border);
+  border-radius: 2px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+.taller .options input {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--ink);
+}
+.taller .options label:has(input:checked) {
+  background: var(--ink);
+  color: var(--on-ink);
+  border-color: var(--ink);
+  accent-color: var(--on-ink);
+}
+.taller .status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--ink);
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+.taller .status::before {
+  width: 1.25em;
+  text-align: center;
+}
+/* Cada estado se distingue por la forma del borde, no por el color. */
+.taller .status--esperando_aprobacion,
+.taller .status--cancelada {
+  border-style: dashed;
+}
+.taller .status--diagnostico,
+.taller .status--esperando_repuesto,
+.taller .status--trabajo_rechazado {
+  border-style: dotted;
+}
+.taller .status--control_calidad,
+.taller .status--lista_para_retirar {
+  border: 3px double var(--ink);
+}
+.taller .status--reservada {
+  border-style: dashed;
+  background: repeating-linear-gradient(135deg, var(--surface) 0 4px, var(--hatch) 4px 5px);
+}
+.taller .status--reservada::before {
+  content: "◇";
+}
+.taller .status--recibida::before {
+  content: "■";
+}
+.taller .status--diagnostico::before {
+  content: "◎";
+}
+.taller .status--esperando_aprobacion::before {
+  content: "?";
+}
+.taller .status--esperando_repuesto::before {
+  content: "⌛";
+}
+.taller .status--en_reparacion::before {
+  content: "⚒";
+}
+.taller .status--control_calidad::before {
+  content: "△";
+}
+.taller .status--lista_para_retirar::before {
+  content: "✓";
+}
+.taller .status--entregada::before {
+  content: "◆";
+}
+.taller .status--cancelada::before {
+  content: "×";
+}
+.taller .status--trabajo_rechazado::before {
+  content: "⊘";
+}
+.taller table.dense {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.taller table.dense th,
+.taller table.dense td {
+  padding: 8px;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: top;
+}
+.taller .grid-photos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
+  gap: 8px;
+}
+.taller .grid-photos img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+}
+.taller :focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}

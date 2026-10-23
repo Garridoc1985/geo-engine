@@ -1,0 +1,112 @@
+---
+type ReportPhoto = { photoId: string; thumbKey: string };
+interface ReportSnapshot {
+  version: 1;
+  orderNumber: string;
+  customerFirstName: string;
+  bike: {
+    brand: string;
+    model: string;
+    year: number | null;
+    type: string;
+    size: string | null;
+    color: string | null;
+    serialNumber: string | null;
+    kmNoted: number | null;
+  };
+  receivedAt: string | null;
+  deliveredAt: string | null;
+  diagnosis: string | null;
+  workDone: { description: string; quantity: number }[];
+  problemsFound: { item: string; result: "revisar" | "malo"; note: string | null }[];
+  componentsReplaced: {
+    componentType: string;
+    brand: string;
+    model: string;
+    replaces: string | null;
+  }[];
+  photosBefore: ReportPhoto[];
+  photosAfter: ReportPhoto[];
+  recommendations: string;
+  nextChecks: string;
+  rejectedWork: { description: string; recommendation: string; decidedAt: string }[];
+  totalClp: number;
+}
+interface Props {
+  snapshot: ReportSnapshot;
+  photos: Record<string, string>;
+}
+const { snapshot, photos } = Astro.props;
+const { bike } = snapshot;
+const total = `$${new Intl.NumberFormat("es-CL").format(Math.round(snapshot.totalClp))}`;
+const date = (value: string) =>
+  new Date(value).toLocaleString("es-CL", { timeZone: "America/Santiago" });
+const bikeTypes: Record<string, string> = {
+  mtb: "MTB",
+  ruta: "Ruta",
+  gravel: "Gravel",
+  urbana: "Urbana",
+  ebike: "Eléctrica",
+};
+const photoGroups = [
+  { title: "Antes", entries: snapshot.photosBefore },
+  { title: "Después", entries: snapshot.photosAfter },
+];
+---
+
+<article aria-label={`Informe de servicio ${snapshot.orderNumber}`}>
+  <section>
+    <h2>Bicicleta</h2>
+    <p>{snapshot.orderNumber} · {snapshot.customerFirstName}</p>
+    <dl>
+      <dt>Marca y modelo</dt><dd>{bike.brand} {bike.model}</dd>
+      <dt>Año</dt><dd>{bike.year ?? "Sin registro"}</dd>
+      <dt>Tipo</dt><dd>{bikeTypes[bike.type] ?? bike.type}</dd>
+      <dt>Talla</dt><dd>{bike.size ?? "Sin registro"}</dd>
+      <dt>Color</dt><dd>{bike.color ?? "Sin registro"}</dd>
+      <dt>Número de serie</dt><dd>{bike.serialNumber ?? "Sin registro"}</dd>
+      <dt>Kilometraje anotado</dt><dd>{bike.kmNoted === null ? "Sin registro" : `${bike.kmNoted} km`}</dd>
+      <dt>Recepción</dt><dd>{snapshot.receivedAt ? date(snapshot.receivedAt) : "Sin registro"}</dd>
+      <dt>Entrega</dt><dd>{snapshot.deliveredAt ? date(snapshot.deliveredAt) : "Pendiente"}</dd>
+    </dl>
+  </section>
+  <section>
+    <h2>Trabajo realizado</h2>
+    {snapshot.workDone.length ? <ul>{snapshot.workDone.map((work) => <li>{work.description} · Cantidad: {work.quantity}</li>)}</ul> : <p>Sin trabajos registrados.</p>}
+  </section>
+  <section>
+    <h2>Problemas encontrados</h2>
+    <p style="white-space:pre-wrap">{snapshot.diagnosis ?? "Sin diagnóstico registrado."}</p>
+    {snapshot.problemsFound.length ? <ul>{snapshot.problemsFound.map((problem) => <li>{problem.item} · {problem.result === "revisar" ? "Revisar" : "Malo"}{problem.note && `: ${problem.note}`}</li>)}</ul> : <p>Sin problemas registrados en la recepción.</p>}
+  </section>
+  <section>
+    <h2>Componentes reemplazados</h2>
+    {snapshot.componentsReplaced.length ? <ul>{snapshot.componentsReplaced.map((component) => <li>{component.componentType} {component.brand} {component.model} · {component.replaces ? `Reemplaza a ${component.replaces}` : "Instalado sin reemplazo"}</li>)}</ul> : <p>Sin componentes instalados en esta orden.</p>}
+  </section>
+  <section>
+    <h2>Antes y después</h2>
+    {photoGroups.map((group) => <section>
+      <h3>{group.title}</h3>
+      <div class="grid-photos">{group.entries.filter((photo) => photos[photo.photoId]).map((photo, index) => <figure>
+        <img src={photos[photo.photoId]} alt={`${group.title} del servicio: ${bike.brand} ${bike.model}, foto ${index + 1}`} />
+        <figcaption>{group.title} · Foto {index + 1}</figcaption>
+      </figure>)}</div>
+      {!group.entries.some((photo) => photos[photo.photoId]) && <p>Sin fotos disponibles.</p>}
+    </section>)}
+  </section>
+  <section><h2>Recomendaciones</h2><p style="white-space:pre-wrap">{snapshot.recommendations || "Sin recomendaciones adicionales."}</p></section>
+  <section><h2>Próximas revisiones</h2><p style="white-space:pre-wrap">{snapshot.nextChecks || "Sin próximas revisiones indicadas."}</p></section>
+  <section>
+    <h2>Trabajos rechazados</h2>
+    {snapshot.rejectedWork.length ? <ul>{snapshot.rejectedWork.map((work) => <li>
+      <p>{work.description}</p><p>{work.recommendation}</p><p>Rechazado el {date(work.decidedAt)}</p>
+    </li>)}</ul> : <p>Sin trabajos rechazados.</p>}
+  </section>
+  <section><h2>Total</h2><p class="tabular-nums">{total}</p></section>
+</article>
+
+<style>
+  .grid-photos { display: flex; flex-wrap: wrap; gap: 16px; }
+  .grid-photos figure { flex: 0 1 320px; min-width: 0; margin: 0; }
+  .grid-photos img { max-width: 100%; height: auto; }
+</style>

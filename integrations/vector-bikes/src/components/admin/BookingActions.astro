@@ -1,0 +1,76 @@
+---
+interface Props {
+  id: string;
+  status: string;
+  canRetryReminder: boolean;
+  canRetryReady: boolean;
+}
+
+const { id, status, canRetryReminder, canRetryReady } = Astro.props;
+---
+
+{
+  status === "confirmed" && (
+    <div class="ticket-foot" style="display:grid;gap:10px">
+      <form method="post">
+        <input type="hidden" name="accion" value="lista_para_retirar" />
+        <button type="submit" class="btn">
+          Marcar lista para retirar
+        </button>
+      </form>
+      {canRetryReminder && (
+        <form method="post">
+          <input type="hidden" name="accion" value="reintentar_recordatorio_whatsapp" />
+          <button type="submit" class="btn ghost">
+            Reintentar recordatorio WhatsApp
+          </button>
+        </form>
+      )}
+      <form method="post">
+        <input type="hidden" name="accion" value="completar" />
+        <button type="submit" class="btn">
+          Marcar completada
+        </button>
+      </form>
+      <form method="post">
+        <input type="hidden" name="accion" value="no_show" />
+        <button type="submit" class="btn ghost">
+          Marcar no-show
+        </button>
+      </form>
+      <a href={`/taller/reservas/${id}/reprogramar`} class="btn ghost">Reprogramar</a>
+      <form method="post">
+        <input type="hidden" name="accion" value="cancelar" />
+        <button type="submit" class="btn ghost">
+          Cancelar reserva
+        </button>
+      </form>
+    </div>
+  )
+}
+{
+  status === "ready_for_pickup" && (
+    <div class="ticket-foot" style="display:grid;gap:10px">
+      <form method="post">
+        <input type="hidden" name="accion" value="completar" />
+        <button type="submit" class="btn">
+          Marcar completada
+        </button>
+      </form>
+      {canRetryReady && (
+        <form method="post">
+          <input type="hidden" name="accion" value="reintentar_whatsapp" />
+          <button type="submit" class="btn ghost">
+            Reintentar notificación por WhatsApp
+          </button>
+        </form>
+      )}
+      <form method="post">
+        <input type="hidden" name="accion" value="cancelar" />
+        <button type="submit" class="btn ghost">
+          Cancelar reserva
+        </button>
+      </form>
+    </div>
+  )
+}

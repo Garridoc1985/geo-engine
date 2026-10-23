@@ -1,0 +1,180 @@
+---
+import "@fontsource/michroma/400.css";
+import "@fontsource-variable/archivo/index.css";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
+import archivoLatin from "@fontsource-variable/archivo/files/archivo-latin-wght-normal.woff2?url";
+import michromaLatin from "@fontsource/michroma/files/michroma-latin-400-normal.woff2?url";
+import { FAQ } from "../lib/faq.ts";
+import { geoAvailable } from "../lib/geo.ts";
+import { SITE, whatsappHref } from "../lib/site.ts";
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+  path: string;
+  noindex?: boolean;
+  chrome?: "site" | "none";
+}
+
+const { title, description, path, noindex = false, chrome = "site" } = Astro.props;
+const canonical = new URL(path, Astro.site).href;
+const whatsapp = whatsappHref(import.meta.env.PUBLIC_WHATSAPP_NUMBER);
+const ogImage = new URL("/brand/vector-bikes-logo.png", Astro.site).href;
+
+const localBusiness = {
+  "@type": "LocalBusiness",
+  name: SITE.name,
+  url: new URL("/", Astro.site).href,
+  image: ogImage,
+  email: SITE.email,
+  telephone: SITE.phone,
+  areaServed: [
+    { "@type": "City", name: "Vitacura" },
+    { "@type": "City", name: "Las Condes" },
+  ],
+  address: {
+    "@type": "PostalAddress",
+    streetAddress: SITE.streetAddress,
+    addressLocality: SITE.locality,
+    addressRegion: SITE.region,
+    addressCountry: SITE.country,
+  },
+  openingHoursSpecification: [
+    {
+      "@type": "OpeningHoursSpecification",
+      dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+      opens: "15:00",
+      closes: "20:00",
+    },
+    {
+      "@type": "OpeningHoursSpecification",
+      dayOfWeek: ["Saturday"],
+      opens: "10:00",
+      closes: "14:00",
+    },
+  ],
+  sameAs: [SITE.instagramUrl],
+};
+// `<` escapado: el JSON va dentro de un <script> y no debe poder cerrarlo.
+const jsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@graph": [
+    localBusiness,
+    {
+      "@type": "FAQPage",
+      mainEntity: FAQ.map(({ q, a }) => ({
+        "@type": "Question",
+        name: q,
+        acceptedAnswer: { "@type": "Answer", text: a },
+      })),
+    },
+  ],
+}).replace(/</g, "\\u003c");
+---
+
+<!doctype html>
+<html lang="es-CL">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href={archivoLatin} />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href={michromaLatin} />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    {noindex && <meta name="robots" content="noindex" />}
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Vector Bikes" />
+    <meta property="og:locale" content="es_CL" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta name="twitter:card" content="summary" />
+    {path === "/" && <script is:inline type="application/ld+json" set:html={jsonLd} />}
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" href="/brand/favicon-32.png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
+  </head>
+  <body>
+    <a class="skip" href="#contenido">Saltar al contenido</a>
+    {
+      chrome === "site" && (
+        <header class="site-head">
+          <div class="wrap">
+            <a href="/" class="wordmark" aria-label="Vector Bikes, inicio" />
+            <nav class="nav" aria-label="Principal">
+              <a href="/#como-funciona">Cómo funciona</a>
+              <a href="/#retiro">Retiro a domicilio</a>
+              <a href="/#taller">Taller</a>
+              <a href="/#preguntas">Preguntas</a>
+              <a href="/#reservar" class="btn">
+                Reservar hora
+              </a>
+            </nav>
+          </div>
+        </header>
+      )
+    }
+    <main id="contenido"><slot /></main>
+    {
+      chrome === "site" && (
+        <footer class="foot">
+          <div class="wrap">
+            <div>
+              <a href="/" class="wordmark" aria-label="Vector Bikes, inicio" />
+              <p style="margin-top:14px;font-size:.84rem;color:var(--steel);max-width:46ch">
+                Usamos tus datos solo para gestionar tu reserva y contactarte sobre tu bicicleta.
+                Escríbenos a info@vectorbikes.cl para revisarlos o eliminarlos.
+              </p>
+              <p style="margin-top:12px;font-size:.84rem">
+                <a href="/privacidad">Aviso de privacidad</a>
+                {geoAvailable && (
+                  <a href="/geo/">Información y servicios</a>
+                )}
+              </p>
+            </div>
+            <div class="foot-links">
+              <a href={SITE.instagramUrl} rel="noopener" target="_blank">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3" y="3" width="18" height="18" rx="5" />
+                  <circle cx="12" cy="12" r="4" />
+                  <circle cx="17.5" cy="6.5" r=".6" />
+                </svg>
+                {SITE.instagramHandle}
+              </a>
+              <a href={`mailto:${SITE.email}`}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3" y="5" width="18" height="14" rx="1" />
+                  <path d="M3 7l9 6 9-6" />
+                </svg>
+                {SITE.email}
+              </a>
+              <a href={SITE.mapsUrl} rel="noopener" target="_blank">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" />
+                  <circle cx="12" cy="10" r="2.5" />
+                </svg>
+                {SITE.addressShort}
+              </a>
+            </div>
+          </div>
+        </footer>
+      )
+    }
+    {
+      chrome === "site" && whatsapp && (
+        <a class="wa" href={whatsapp} rel="noopener" target="_blank" aria-label="Escríbenos por WhatsApp">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 20l1.4-4.2A8 8 0 1 1 8.4 19z" />
+            <path d="M9 9.5c.3 2 2.2 4 4.5 4.5l1-1.2 1.8.8-.4 1.6c-3.6.2-7.4-3.4-7.3-7l1.6-.4.8 1.8z" />
+          </svg>
+          <span>WhatsApp</span>
+        </a>
+      )
+    }
+  </body>
+</html>

@@ -1,0 +1,37 @@
+# Dependencias y salidas de build
+node_modules/
+dist/
+dist-public-test/
+.astro/
+.netlify/
+coverage/
+
+# Entorno: nunca se commitean valores reales
+.env
+.env.*
+!.env.example
+
+# Logs y temporales
+*.log
+.DS_Store
+
+# Estado local de Replit y corepack
+.local/
+.upm/
+.cache/
+.config/
+
+# Fase 1: imágenes del almacenamiento local y salidas de Playwright
+.storage/
+.storage-e2e/
+test-results/
+playwright-report/
+blob-report/
+
+# Publicación GEO: contenido empresarial y respaldo local fuera del código.
+public/geo/
+public/.geo-stage-*/
+.geo-backup/
+
+# Documentos de Word: viven en el disco del dueño, no en el repositorio
+*.docx

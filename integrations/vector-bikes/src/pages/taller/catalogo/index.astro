@@ -1,0 +1,179 @@
+---
+import Card from "../../../components/taller/Card.astro";
+import PageHeader from "../../../components/taller/PageHeader.astro";
+import TallerLayout from "../../../layouts/TallerLayout.astro";
+import { isAllowedOrigin } from "../../../server/api/handlers.ts";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../../server/auth/permissions.ts";
+import { getDb } from "../../../server/db/client.ts";
+import { formatClp } from "../../../server/email/templates.ts";
+import {
+  createService,
+  listCatalog,
+  pricesFormSchema,
+  serviceFormSchema,
+} from "../../../server/taller/catalog.ts";
+import { BIKE_TYPES, BIKE_TYPE_LABELS } from "../../../server/taller/rules.ts";
+
+export const prerender = false;
+const PATH = "/taller/catalogo";
+const db = getDb();
+const now = new Date();
+const user = await requireAdmin(db, Astro.cookies.get(SESSION_COOKIE)?.value, now);
+if (!user)
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location: loginRedirect(Astro.url.pathname + Astro.url.search),
+      "cache-control": "no-store",
+    },
+  });
+if (!can(user.role, "catalog.view")) return forbiddenResponse();
+Astro.response.headers.set("cache-control", "no-store");
+const canEdit = can(user.role, "catalog.edit");
+let error = "";
+let values: Record<string, string> = { estimatedMinutes: "60" };
+const fieldErrors: Record<string, string> = {};
+const fieldMessages: Record<string, string> = {
+  name: "Ingresa un nombre de 2 a 80 caracteres.",
+  estimatedMinutes: "Ingresa una duración entre 5 y 1440 minutos, sin decimales.",
+  priceClp: "Ingresa un precio en pesos chilenos entre 0 y 2147483647, sin decimales.",
+  description: "La descripción debe tener como máximo 1000 caracteres.",
+  usualMaterials: "Los materiales deben tener como máximo 1000 caracteres.",
+  aftercare: "Las recomendaciones deben tener como máximo 1000 caracteres.",
+};
+const textFields = [
+  { key: "description", label: "Descripción" },
+  { key: "usualMaterials", label: "Materiales habituales" },
+  { key: "aftercare", label: "Recomendaciones" },
+];
+const formSchema = serviceFormSchema.extend({ prices: pricesFormSchema.shape.prices });
+
+if (Astro.request.method === "POST") {
+  if (!isAllowedOrigin(Astro.request)) return forbiddenResponse();
+  if (!can(user.role, "catalog.edit")) return forbiddenResponse();
+  const form = await Astro.request.formData();
+  values = Object.fromEntries([...form].map(([key, value]) => [key, String(value)]));
+  const parsed = formSchema.safeParse({
+    ...values,
+    isActive: true,
+    prices: Object.fromEntries(BIKE_TYPES.map((type) => [type, values[`precio_${type}`] ?? ""])),
+  });
+  if (!parsed.success) {
+    Astro.response.status = 422;
+    error = "Revisa los datos del servicio.";
+    for (const issue of parsed.error.issues) {
+      const field = String(issue.path[0]);
+      if (field === "prices") {
+        fieldErrors[`price-${String(issue.path[1])}`] =
+          fieldMessages.priceClp ?? "Revisa este dato.";
+      } else {
+        fieldErrors[field] = fieldMessages[field] ?? "Revisa este dato.";
+      }
+    }
+  } else {
+    const { prices, ...input } = parsed.data;
+    const result = await createService(db, user, input, now, prices);
+    if (result.ok)
+      return new Response(null, {
+        status: 303,
+        headers: {
+          location: `${PATH}?hecho=crear`,
+          "cache-control": "no-store",
+        },
+      });
+    if (result.code === "forbidden") return forbiddenResponse();
+    Astro.response.status = 409;
+    error = "Ya existe un servicio con ese nombre en tu sucursal.";
+    fieldErrors.name = error;
+  }
+}
+const catalog = await listCatalog(db, user);
+const notice = Astro.url.searchParams.get("hecho") === "crear" ? "Servicio creado." : "";
+---
+
+<TallerLayout title="Catálogo — Vector Bikes" description="Servicios y precios del taller por tipo de bicicleta." path={PATH} user={user}>
+  <div class="stack">
+    <PageHeader title="Catálogo de servicios" />
+    {notice && <p role="status">{notice}</p>}
+    {error && <p role="alert">{error}</p>}
+    <Card><div class="scroll-x">
+      <table class="dense">
+        <caption>Servicios y precios en pesos chilenos de tu sucursal</caption>
+        <thead><tr><th scope="col">Servicio</th><th scope="col">Duración</th><th scope="col">Estado</th>{BIKE_TYPES.map((type) => <th scope="col">{BIKE_TYPE_LABELS[type]}</th>)}</tr></thead>
+        <tbody>
+          {catalog.map((service) => (
+            <tr>
+              <th scope="row"><a href={`${PATH}/${service.id}`}>{service.name}</a></th>
+              <td>{service.estimatedMinutes} min</td>
+              <td>{service.isActive ? "Activo" : "Inactivo"}</td>
+              {BIKE_TYPES.map((type) => <td class={service.prices[type] === undefined ? "muted" : "mono"}>{service.prices[type] === undefined ? "Sin precio" : formatClp(service.prices[type])}</td>)}
+            </tr>
+          ))}
+          {catalog.length === 0 && <tr><td class="muted" colspan="8">Aún no hay servicios en el catálogo.</td></tr>}
+        </tbody>
+      </table>
+    </div></Card>
+    {canEdit && (
+      <Card id="new-service" title="Nuevo servicio">
+        <form method="post" action={PATH}>
+          <div class="fields">
+            <div class="field">
+              <label for="name">Nombre</label>
+              <input id="name" name="name" required minlength="2" maxlength="80" value={values.name ?? ""} aria-invalid={Boolean(fieldErrors.name)} aria-describedby={fieldErrors.name ? "name-error" : undefined} />
+              {fieldErrors.name && <p id="name-error">{fieldErrors.name}</p>}
+            </div>
+            <div class="field">
+              <label for="estimatedMinutes">Duración estimada (minutos)</label>
+              <input id="estimatedMinutes" name="estimatedMinutes" type="number" required min="5" max="1440" step="1" value={values.estimatedMinutes} aria-invalid={Boolean(fieldErrors.estimatedMinutes)} aria-describedby={fieldErrors.estimatedMinutes ? "estimatedMinutes-error" : undefined} />
+              {fieldErrors.estimatedMinutes && <p id="estimatedMinutes-error">{fieldErrors.estimatedMinutes}</p>}
+            </div>
+            {textFields.map((field) => (
+              <div class="field">
+                <label for={field.key}>{field.label}</label>
+                <textarea id={field.key} name={field.key} maxlength="1000" rows="3" aria-invalid={Boolean(fieldErrors[field.key])} aria-describedby={fieldErrors[field.key] ? `${field.key}-error` : undefined}>{values[field.key] ?? ""}</textarea>
+                {fieldErrors[field.key] && <p id={`${field.key}-error`}>{fieldErrors[field.key]}</p>}
+              </div>
+            ))}
+          </div>
+          <fieldset>
+            <legend>Precios por tipo de bicicleta</legend>
+            <div class="fields catalog-price-fields">
+              {BIKE_TYPES.map((type) => (
+                <div class="field">
+                  <label for={`price-${type}`}>Precio {BIKE_TYPE_LABELS[type]} (CLP)</label>
+                  <input id={`price-${type}`} name={`precio_${type}`} type="text" inputmode="decimal" placeholder="No aplica" value={values[`precio_${type}`] ?? ""} aria-invalid={Boolean(fieldErrors[`price-${type}`])} aria-describedby={fieldErrors[`price-${type}`] ? `price-error-${type}` : undefined} />
+                  {fieldErrors[`price-${type}`] && <p id={`price-error-${type}`}>{fieldErrors[`price-${type}`]}</p>}
+                </div>
+              ))}
+            </div>
+          </fieldset>
+          <button type="submit" class="btn">Crear servicio</button>
+        </form>
+      </Card>
+    )}
+  </div>
+</TallerLayout>
+
+<style is:global>
+  .taller .catalog-price-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .taller .catalog-price-fields input {
+    width: 100%;
+    min-width: 0;
+  }
+  .taller #new-service fieldset {
+    margin-block: 16px;
+  }
+  @media (min-width: 1200px) {
+    .taller .catalog-price-fields {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 479px) {
+    .taller .catalog-price-fields {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+</style>

@@ -1,0 +1,229 @@
+---
+import { z } from "zod";
+import Card from "../../../components/taller/Card.astro";
+import PageHeader from "../../../components/taller/PageHeader.astro";
+import TallerLayout from "../../../layouts/TallerLayout.astro";
+import { isAllowedOrigin } from "../../../server/api/handlers.ts";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../../server/auth/permissions.ts";
+import { localToday } from "../../../server/booking/slots.ts";
+import { getDb } from "../../../server/db/client.ts";
+import {
+  createManualBooking,
+  freeBlocks,
+  manualBookingSchema,
+} from "../../../server/taller/manual-booking.ts";
+
+export const prerender = false;
+const PATH = "/taller/reservas/nueva";
+const db = getDb();
+const now = new Date();
+const user = await requireAdmin(db, Astro.cookies.get(SESSION_COOKIE)?.value, now);
+if (!user)
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location: loginRedirect(Astro.url.pathname + Astro.url.search),
+      "cache-control": "no-store",
+    },
+  });
+if (!can(user.role, "bookings.manage")) return forbiddenResponse();
+Astro.response.headers.set("cache-control", "no-store");
+const selectionSchema = z.strictObject({
+  service_date: z.iso.date("Elige una fecha válida."),
+  mode: z.enum(["taller", "retiro"], "Elige taller o retiro."),
+});
+let values: Record<string, string> = {
+  service_date: Astro.url.searchParams.get("service_date") ?? localToday(now),
+  mode: Astro.url.searchParams.get("mode") ?? "taller",
+  source: "telefono",
+};
+const fieldErrors: Record<string, string> = {};
+let error = "";
+const isPost = Astro.request.method === "POST";
+if (isPost) {
+  if (!isAllowedOrigin(Astro.request)) return forbiddenResponse();
+  const form = await Astro.request.formData();
+  values = Object.fromEntries([...form].map(([key, value]) => [key, String(value)]));
+  const parsed = manualBookingSchema.safeParse({
+    ...values,
+    consentimiento: values.consentimiento === "true",
+  });
+  if (!parsed.success) {
+    Astro.response.status = 422;
+    error = "Revisa los datos de la reserva.";
+    for (const issue of parsed.error.issues)
+      fieldErrors[String(issue.path[0] ?? "formulario")] ??= issue.message;
+  } else {
+    const result = await createManualBooking(db, user, parsed.data, now);
+    if (result.ok)
+      return new Response(null, {
+        status: 303,
+        headers: {
+          location: "/taller/reservas?hecho=creada",
+          "cache-control": "no-store",
+        },
+      });
+    if (result.code === "forbidden") return forbiddenResponse();
+    Astro.response.status = result.code === "validation_error" ? 422 : 409;
+    error =
+      result.code === "phone_limit"
+        ? "Ya existe una reserva próxima con este teléfono. Revisa la agenda antes de crear otra."
+        : result.code === "slot_unavailable"
+          ? "El bloque ya no está disponible. Elige otro bloque o día."
+          : "Revisa los datos de la reserva.";
+    if (result.code === "phone_limit") fieldErrors.telefono = error;
+    if (result.code === "slot_unavailable") fieldErrors.start = error;
+  }
+}
+const selected = selectionSchema.safeParse({
+  service_date: values.service_date,
+  mode: values.mode,
+});
+const requested =
+  isPost || Astro.url.searchParams.has("service_date") || Astro.url.searchParams.has("mode");
+if (requested && !selected.success) {
+  Astro.response.status = 422;
+  error = "Revisa la fecha y la modalidad.";
+  for (const issue of selected.error.issues) fieldErrors[String(issue.path[0])] ??= issue.message;
+}
+const blocks =
+  requested && selected.success
+    ? await freeBlocks(db, selected.data.service_date, selected.data.mode, now)
+    : [];
+const fields: {
+  key: string;
+  label: string;
+  type: "text" | "tel" | "email";
+  required: boolean;
+  maxlength: number;
+  autocomplete: string;
+}[] = [
+  {
+    key: "nombre",
+    label: "Nombre",
+    type: "text",
+    required: true,
+    maxlength: 80,
+    autocomplete: "name",
+  },
+  {
+    key: "telefono",
+    label: "Teléfono",
+    type: "tel",
+    required: true,
+    maxlength: 30,
+    autocomplete: "tel",
+  },
+  {
+    key: "correo",
+    label: "Correo (opcional)",
+    type: "email",
+    required: false,
+    maxlength: 254,
+    autocomplete: "email",
+  },
+  {
+    key: "bicicleta",
+    label: "Marca y tipo de bicicleta",
+    type: "text",
+    required: true,
+    maxlength: 120,
+    autocomplete: "off",
+  },
+];
+---
+
+<TallerLayout title="Nueva reserva — Vector Bikes" description="Crear una reserva manual del taller." path="/taller/reservas" user={user}>
+  <div class="stack">
+    <PageHeader title="Nueva reserva">
+      <a slot="actions" href="/taller/reservas">Volver a reservas</a>
+    </PageHeader>
+    {error && <p role="alert">{error}</p>}
+    <Card><form method="get" action={PATH}>
+      <div class="fields">
+        <div class="field">
+          <label for="service_date">Día</label>
+          <input id="service_date" name="service_date" type="date" required value={values.service_date} aria-invalid={Boolean(fieldErrors.service_date)} aria-describedby={fieldErrors.service_date ? "service_date-error" : undefined} />
+          {fieldErrors.service_date && <p id="service_date-error">{fieldErrors.service_date}</p>}
+        </div>
+        <div class="field">
+          <label for="mode">Modalidad</label>
+          <select id="mode" name="mode" required aria-invalid={Boolean(fieldErrors.mode)} aria-describedby={fieldErrors.mode ? "mode-error" : undefined}>
+            <option value="taller" selected={values.mode === "taller"}>Entrega en taller</option>
+            <option value="retiro" selected={values.mode === "retiro"}>Retiro a domicilio</option>
+          </select>
+          {fieldErrors.mode && <p id="mode-error">{fieldErrors.mode}</p>}
+        </div>
+      </div>
+      <button type="submit" class="btn ghost">Ver bloques libres</button>
+    </form></Card>
+    {requested && selected.success && (
+      <>
+        <p class="mono">Día {values.service_date} · {values.mode === "retiro" ? "Retiro a domicilio · $15.000" : "Entrega en taller"}</p>
+        {blocks.length === 0 && <p role="status" class="muted">No hay bloques libres para este día y modalidad. Elige otro día.</p>}
+        <Card><form method="post" action={PATH}>
+          <input type="hidden" name="service_date" value={values.service_date} />
+          <input type="hidden" name="mode" value={values.mode} />
+          <div class="fields">
+            <div class="field">
+              <label for="start">Bloque disponible</label>
+              <select id="start" name="start" required aria-invalid={Boolean(fieldErrors.start)} aria-describedby={fieldErrors.start ? "start-error" : undefined}>
+                <option value="">Elige un bloque</option>
+                {blocks.map((block) => <option value={block.start} selected={values.start === block.start}>{block.start}</option>)}
+              </select>
+              {fieldErrors.start && <p id="start-error">{fieldErrors.start}</p>}
+            </div>
+            {fields.map((field) => (
+              <div class="field">
+                <label for={field.key}>{field.label}</label>
+                <input id={field.key} name={field.key} type={field.type} required={field.required} maxlength={field.maxlength} autocomplete={field.autocomplete} value={values[field.key] ?? ""} aria-invalid={Boolean(fieldErrors[field.key])} aria-describedby={fieldErrors[field.key] ? `${field.key}-error` : undefined} />
+                {fieldErrors[field.key] && <p id={`${field.key}-error`}>{fieldErrors[field.key]}</p>}
+              </div>
+            ))}
+            <div class="field">
+              <label for="descripcion">Qué necesita la bicicleta</label>
+              <textarea id="descripcion" name="descripcion" required minlength="5" maxlength="1000" rows="3" aria-invalid={Boolean(fieldErrors.descripcion)} aria-describedby={fieldErrors.descripcion ? "descripcion-error" : undefined}>{values.descripcion ?? ""}</textarea>
+              {fieldErrors.descripcion && <p id="descripcion-error">{fieldErrors.descripcion}</p>}
+            </div>
+            {values.mode === "retiro" && (
+              <>
+                <div class="field">
+                  <label for="comuna">Comuna</label>
+                  <select id="comuna" name="comuna" required aria-invalid={Boolean(fieldErrors.comuna)} aria-describedby={fieldErrors.comuna ? "comuna-error" : undefined}>
+                    <option value="">Elige una comuna</option>
+                    <option value="Vitacura" selected={values.comuna === "Vitacura"}>Vitacura</option>
+                    <option value="Las Condes" selected={values.comuna === "Las Condes"}>Las Condes</option>
+                  </select>
+                  {fieldErrors.comuna && <p id="comuna-error">{fieldErrors.comuna}</p>}
+                </div>
+                <div class="field">
+                  <label for="direccion">Dirección de retiro</label>
+                  <input id="direccion" name="direccion" required minlength="5" maxlength="200" value={values.direccion ?? ""} aria-invalid={Boolean(fieldErrors.direccion)} aria-describedby={fieldErrors.direccion ? "direccion-error" : undefined} />
+                  {fieldErrors.direccion && <p id="direccion-error">{fieldErrors.direccion}</p>}
+                </div>
+              </>
+            )}
+            <fieldset>
+              <legend>Origen de la reserva</legend>
+              <div class="options">
+                {[{ value: "telefono", label: "Teléfono" }, { value: "whatsapp", label: "WhatsApp" }, { value: "presencial", label: "Presencial" }].map((source) => (
+                  <label for={`source-${source.value}`}><input id={`source-${source.value}`} name="source" type="radio" required value={source.value} checked={values.source === source.value} aria-invalid={Boolean(fieldErrors.source)} aria-describedby={fieldErrors.source ? "source-error" : undefined} />{source.label}</label>
+                ))}
+              </div>
+              {fieldErrors.source && <p id="source-error">{fieldErrors.source}</p>}
+            </fieldset>
+            <fieldset>
+              <legend>Aviso de privacidad</legend>
+              <div class="options">
+                <label for="consentimiento"><input id="consentimiento" name="consentimiento" type="checkbox" required value="true" checked={values.consentimiento === "true"} aria-invalid={Boolean(fieldErrors.consentimiento)} aria-describedby={fieldErrors.consentimiento ? "consentimiento-error" : undefined} />El cliente aceptó el aviso de privacidad</label>
+              </div>
+              {fieldErrors.consentimiento && <p id="consentimiento-error">{fieldErrors.consentimiento}</p>}
+            </fieldset>
+          </div>
+          <button type="submit" class="btn" disabled={blocks.length === 0}>Crear reserva</button>
+        </form></Card>
+      </>
+    )}
+  </div>
+</TallerLayout>

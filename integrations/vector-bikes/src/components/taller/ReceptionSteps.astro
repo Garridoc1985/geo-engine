@@ -1,0 +1,45 @@
+---
+interface Props {
+  current: 1 | 2 | 3 | 4;
+}
+
+const { current } = Astro.props;
+const steps = ["1 Cliente y bicicleta", "2 Checklist y servicios", "3 Fotos", "4 Firma"];
+---
+
+<nav class="reception-steps" aria-label="Pasos de la recepción">
+  <ol>
+    {steps.map((step, index) => (
+      <li aria-current={current === index + 1 ? "step" : undefined}>{step}</li>
+    ))}
+  </ol>
+</nav>
+
+<style is:global>
+  .taller .reception-steps {
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+  .taller .reception-steps ol {
+    display: flex;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .taller .reception-steps li {
+    flex: 0 0 auto;
+    padding: 12px;
+    border: 1px dotted var(--steel);
+    border-radius: 2px;
+    color: var(--steel);
+    white-space: nowrap;
+  }
+  .taller .reception-steps [aria-current="step"] {
+    border: 1px solid var(--ink);
+    color: var(--ink);
+    font-weight: 600;
+  }
+</style>

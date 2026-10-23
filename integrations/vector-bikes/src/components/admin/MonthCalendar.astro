@@ -1,0 +1,311 @@
+---
+/** Vista de mes del panel: cada día es un botón de un formulario GET que carga su agenda. */
+type Day = {
+  date: string;
+  day: number;
+  state: "free" | "booked" | "full" | "blocked" | "holiday" | "closed";
+  used: number;
+  outside: "past" | "horizon" | null;
+  isToday: boolean;
+  label: string;
+};
+
+type Props = {
+  month: {
+    title: string;
+    prev: string;
+    next: string;
+    offset: number;
+    capacity: number;
+    days: Day[];
+  };
+  selected: string;
+};
+
+const { month, selected } = Astro.props;
+const WEEKDAYS = [
+  ["Lu", "Lunes"],
+  ["Ma", "Martes"],
+  ["Mi", "Miércoles"],
+  ["Ju", "Jueves"],
+  ["Vi", "Viernes"],
+  ["Sá", "Sábado"],
+  ["Do", "Domingo"],
+] as const;
+const TAGS: Record<Day["state"], [string, string] | null> = {
+  free: null,
+  booked: null,
+  full: ["Completo", "Lleno"],
+  blocked: ["Bloqueado", "Bloq."],
+  holiday: ["Feriado", "Fer."],
+  closed: ["Cerrado", "Cerr."],
+};
+const occupancy = (day: Day) =>
+  day.state === "holiday" || day.state === "closed" ? "—" : `${day.used}/${month.capacity}`;
+---
+
+<section class="month" aria-labelledby="month-title">
+  <div class="month-head">
+    <h2 id="month-title" class="month-title">{month.title}</h2>
+    <div class="month-nav">
+      <a class="btn ghost month-arrow" href={`/admin?mes=${month.prev}&fecha=${selected}`} aria-label="Mes anterior">
+        <span aria-hidden="true">←</span>
+      </a>
+      <a class="btn ghost" href="/admin">Hoy</a>
+      <a class="btn ghost month-arrow" href={`/admin?mes=${month.next}&fecha=${selected}`} aria-label="Mes siguiente">
+        <span aria-hidden="true">→</span>
+      </a>
+    </div>
+  </div>
+  <form method="get" action="/admin" class="month-grid">
+    {
+      WEEKDAYS.map(([short, long]) => (
+        <abbr class="month-wd" title={long}>
+          {short}
+        </abbr>
+      ))
+    }
+    {Array.from({ length: month.offset }, () => <span class="month-pad" aria-hidden="true"></span>)}
+    {
+      month.days.map((day) => {
+        const tag = TAGS[day.state];
+        return (
+          <button
+            type="submit"
+            name="fecha"
+            value={day.date}
+            class="mday"
+            data-state={day.state}
+            data-outside={day.outside ?? undefined}
+            data-today={day.isToday ? "" : undefined}
+            aria-label={day.label}
+            aria-current={day.date === selected ? "date" : undefined}
+          >
+            <span class="mday-n" aria-hidden="true">
+              {day.day}
+            </span>
+            <span class="mday-o" aria-hidden="true">
+              {occupancy(day)}
+            </span>
+            {tag && (
+              <span class="mday-t" aria-hidden="true">
+                <span class="long">{tag[0]}</span>
+                <span class="short">{tag[1]}</span>
+              </span>
+            )}
+          </button>
+        );
+      })
+    }
+  </form>
+  <ul class="month-legend" aria-label="Leyenda">
+    <li><span class="sw" data-state="free"></span>Libre</li>
+    <li><span class="sw" data-state="booked"></span>Con reservas (1 a {month.capacity - 1})</li>
+    <li><span class="sw" data-state="full"></span>Completo ({month.capacity}/{month.capacity})</li>
+    <li><span class="sw" data-state="blocked"></span>Bloqueado</li>
+    <li><span class="sw" data-state="closed"></span>Feriado o domingo</li>
+    <li><span class="sw" data-outside="past"></span>Pasado o fuera de plazo</li>
+  </ul>
+</section>
+
+<style>
+  .month {
+    margin-bottom: 28px;
+  }
+  .month-head {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .month-title {
+    font-family: var(--body);
+    font-weight: 600;
+    font-size: 1.25rem;
+    margin: 0;
+  }
+  .month-nav {
+    display: flex;
+    gap: 8px;
+  }
+  .month-nav .btn {
+    min-height: 44px;
+    min-width: 44px;
+    justify-content: center;
+  }
+  .month-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .month-wd {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--steel);
+    text-decoration: none;
+    padding: 0 2px 4px;
+  }
+  .mday {
+    display: grid;
+    align-content: start;
+    gap: 2px;
+    min-height: 72px;
+    min-width: 0;
+    padding: 8px;
+    text-align: left;
+    font: inherit;
+    color: var(--ink);
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    background: var(--surface);
+    border: 1px solid var(--field-border);
+    border-radius: 2px;
+    cursor: pointer;
+    transition:
+      border-color var(--dur-fast) var(--ease),
+      background-color var(--dur-fast) var(--ease);
+  }
+  .mday:hover {
+    border-color: var(--ink);
+  }
+  .mday-n {
+    font-weight: 500;
+    font-size: 1rem;
+  }
+  .mday-o {
+    font-size: 0.78rem;
+    color: var(--ink-2);
+  }
+  .mday-t {
+    font-size: 0.64rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--steel);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mday-t .short {
+    display: none;
+  }
+  .mday[data-state="booked"] .mday-o {
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .mday[data-state="full"],
+  .sw[data-state="full"] {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--on-ink);
+  }
+  .mday[data-state="full"] .mday-o,
+  .mday[data-state="full"] .mday-t {
+    color: var(--on-ink);
+  }
+  .mday[data-state="full"]:hover {
+    background: var(--surface);
+    color: var(--ink);
+  }
+  .mday[data-state="full"]:hover .mday-o,
+  .mday[data-state="full"]:hover .mday-t {
+    color: var(--ink);
+  }
+  .mday[data-state="blocked"],
+  .sw[data-state="blocked"] {
+    background:
+      repeating-linear-gradient(-45deg, var(--hatch) 0 2px, transparent 2px 7px), var(--surface);
+  }
+  .mday[data-state="holiday"],
+  .mday[data-state="closed"],
+  .sw[data-state="closed"] {
+    background: var(--ground);
+    border-style: dashed;
+  }
+  .mday[data-outside] .mday-n,
+  .mday[data-outside] .mday-o,
+  .mday[data-outside] .mday-t {
+    opacity: 0.5;
+  }
+  .mday[data-outside] {
+    border-color: var(--rule);
+  }
+  .mday[data-today] .mday-n {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .mday[aria-current="date"] {
+    border-color: var(--ink);
+    box-shadow: inset 0 0 0 1px var(--ink);
+  }
+  .mday[data-state="full"][aria-current="date"] {
+    box-shadow: none;
+    outline: 1px solid var(--on-ink);
+    outline-offset: -4px;
+  }
+  .month-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    list-style: none;
+    padding: 0;
+    margin: 12px 0 0;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--steel);
+  }
+  .month-legend li {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .sw {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--field-border);
+    border-radius: 2px;
+    background: var(--surface);
+  }
+  .sw[data-outside] {
+    border-color: var(--rule);
+    opacity: 0.5;
+  }
+  @media (max-width: 560px) {
+    .month-grid {
+      gap: 3px;
+    }
+    .month-wd {
+      font-size: 0.62rem;
+      letter-spacing: 0.06em;
+      padding: 0 0 2px;
+      text-align: center;
+    }
+    .mday {
+      min-height: 52px;
+      padding: 5px 3px;
+      text-align: center;
+      justify-items: center;
+    }
+    .mday-n {
+      font-size: 0.85rem;
+    }
+    .mday-o {
+      font-size: 0.66rem;
+    }
+    .mday-t {
+      font-size: 0.56rem;
+      letter-spacing: 0.02em;
+      max-width: 100%;
+    }
+    .mday-t .long {
+      display: none;
+    }
+    .mday-t .short {
+      display: inline;
+    }
+  }
+</style>

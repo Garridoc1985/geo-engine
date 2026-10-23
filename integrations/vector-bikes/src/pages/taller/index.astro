@@ -1,0 +1,360 @@
+---
+import Card from "../../components/taller/Card.astro";
+import PageHeader from "../../components/taller/PageHeader.astro";
+import TallerLayout from "../../layouts/TallerLayout.astro";
+import { getSiteEnv } from "../../lib/env.ts";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../server/auth/permissions.ts";
+import type { Action } from "../../server/auth/permissions.ts";
+import { getDb } from "../../server/db/client.ts";
+import { formatClp } from "../../server/email/templates.ts";
+import { adminDashboard, mechanicDashboard } from "../../server/taller/dashboard.ts";
+import type { DashboardOrder } from "../../server/taller/dashboard.ts";
+
+export const prerender = false;
+
+const db = getDb();
+const now = new Date();
+const user = await requireAdmin(db, Astro.cookies.get(SESSION_COOKIE)?.value, now);
+if (!user) return Astro.redirect(loginRedirect(Astro.url.pathname + Astro.url.search), 303);
+if (!can(user.role, "orders.edit")) return forbiddenResponse();
+
+Astro.response.headers.set("cache-control", "no-store");
+const { name, role } = user;
+const admin = can(role, "dashboard.admin") ? await adminDashboard(db, user, now) : null;
+const mechanic = can(role, "dashboard.mechanic") ? await mechanicDashboard(db, user, now) : null;
+type AdminDashboard = NonNullable<Awaited<ReturnType<typeof adminDashboard>>>;
+type OrderCard = DashboardOrder & { balance?: number };
+type OrderSection = { id: string; title: string; orders: OrderCard[] };
+type BookingSection = { id: string; title: string; bookings: AdminDashboard["bookingsToday"] };
+function orderSection(id: string, title: string, orders: OrderCard[]): OrderSection {
+  return { id, title, orders };
+}
+
+// Solo presentación: los grupos salen tal cual de adminDashboard/mechanicDashboard.
+const sections: OrderSection[] = admin
+  ? [
+      orderSection("inWorkshop", "Bicicletas en taller", admin.inWorkshop),
+      orderSection("waitingApproval", "Esperando aprobación", admin.waitingApproval),
+      orderSection("waitingParts", "Esperando repuesto", admin.waitingParts),
+      orderSection("inRepair", "En reparación", admin.inRepair),
+      orderSection("qcPending", "Control de calidad pendiente", admin.qcPending),
+      orderSection("readyForPickup", "Listas para retiro", admin.readyForPickup),
+      orderSection("overdue", "Atrasadas", admin.overdue),
+      orderSection("upcomingDeliveries", "Próximas entregas", admin.upcomingDeliveries),
+      ...(admin.pendingPayments === null
+        ? []
+        : [orderSection("pendingPayments", "Pagos pendientes", admin.pendingPayments)]),
+    ]
+  : mechanic
+    ? [
+        orderSection("assigned", "Bicicletas asignadas", mechanic.assigned),
+        orderSection("pending", "Trabajos pendientes", mechanic.pending),
+        orderSection("overdue", "Atrasados", mechanic.overdue),
+        orderSection("waitingApproval", "Esperando aprobación", mechanic.waitingApproval),
+        orderSection("waitingParts", "Esperando repuesto", mechanic.waitingParts),
+        orderSection("dueSoon", "Próximos a entrega", mechanic.dueSoon),
+        orderSection("qcPending", "Control de calidad pendiente", mechanic.qcPending),
+        orderSection("unassigned", "Sin asignar", mechanic.unassigned),
+      ]
+    : [];
+const bookings: BookingSection | null = admin
+  ? { id: "bookingsToday", title: "Reservas de hoy", bookings: admin.bookingsToday }
+  : mechanic
+    ? {
+        id: "upcomingIntakes",
+        title: "Próximos ingresos",
+        bookings: mechanic.upcomingIntakes.map(({ customerFirstName, ...booking }) => ({
+          ...booking,
+          customerName: customerFirstName,
+        })),
+      }
+    : null;
+const income = admin && admin.incomeTodayClp !== null ? admin.incomeTodayClp : null;
+const mechanics = admin ? admin.loadByMechanic : null;
+
+const ACTIONS: { label: string; href: string; action: Action; primary?: boolean }[] = [
+  {
+    label: "Nueva recepción",
+    href: "/taller/recepcion/nueva",
+    action: "reception.perform",
+    primary: true,
+  },
+  { label: "Nueva reserva", href: "/taller/reservas/nueva", action: "bookings.manage" },
+  { label: "Órdenes", href: "/taller/ordenes", action: "orders.edit" },
+  { label: "Clientes", href: "/taller/clientes", action: "customers.manage" },
+];
+const actions = ACTIONS.filter((entry) => can(role, entry.action));
+
+/** El enlace público es informativo: si falta `PUBLIC_SITE_URL`, la tarjeta se muestra sin él. */
+let bookingUrl: string | null = null;
+try {
+  bookingUrl = `${getSiteEnv().PUBLIC_SITE_URL.replace(/\/$/, "")}/#reservar`;
+} catch {
+  bookingUrl = null;
+}
+---
+
+<TallerLayout title="Taller — Vector Bikes" description="Área interna del taller." path="/taller" user={user}>
+  <div class="dash">
+    <PageHeader title="Taller" subtitle={`Hola, ${name}`}>
+      {bookingUrl && (
+        <p class="dash-share" slot="actions">
+          <span class="label">Reservas en línea</span>
+          <span class="mono dash-url">{bookingUrl}</span>
+        </p>
+      )}
+    </PageHeader>
+
+    {actions.length > 0 && (
+      <nav class="dash-actions" aria-label="Acciones">
+        {actions.map((entry) => (
+          <a href={entry.href} class={entry.primary ? "btn" : "btn ghost"}>{entry.label}</a>
+        ))}
+      </nav>
+    )}
+
+    <form class="card dash-search" method="get" action="/taller/buscar">
+      <div class="field">
+        <label for="dash-q">Nombre, teléfono, RUT o número de orden</label>
+        <input id="dash-q" name="q" type="search" maxlength="80" />
+      </div>
+      <button type="submit" class="btn ghost">Buscar</button>
+    </form>
+
+    <div class="dash-cols">
+      <div class="dash-main">
+        {sections.map((section) => (
+          <section
+            class:list={["dash-section", { "is-empty": section.orders.length === 0 }]}
+            aria-labelledby={`dashboard-${section.id}`}
+          >
+            <h2 id={`dashboard-${section.id}`}>{section.title}</h2>
+            {section.orders.length === 0 ? (
+              <p class="dash-empty">Sin órdenes</p>
+            ) : (
+              <ul class="order-cards">
+                {section.orders.map((order) => (
+                  <li class="card order-card">
+                    <p class="order-head">
+                      <span class="mono order-number">{order.number}</span>
+                      <span class={`status status--${order.status}`}>{order.statusLabel}</span>
+                    </p>
+                    <p class="order-who">{order.customerName} · {order.bike}</p>
+                    <p class="order-meta">
+                      {order.mechanicName ?? "Sin mecánico"} ·{" "}
+                      {order.estimatedDeliveryDate ? (
+                        <time datetime={order.estimatedDeliveryDate}>{order.estimatedDeliveryDate}</time>
+                      ) : (
+                        "Sin fecha"
+                      )}
+                    </p>
+                    {order.balance !== undefined && (
+                      <p class="order-balance">Saldo: {formatClp(order.balance)}</p>
+                    )}
+                    <p class="order-links">
+                      <a href={`/taller/ordenes/${order.id}`}>Ver orden</a>
+                      <a href={`/taller/ordenes/${order.id}/etiqueta`}>Etiqueta</a>
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ))}
+      </div>
+
+      <aside class="dash-side" aria-label="Resumen">
+        <Card id="dashboard-counts" title="Órdenes por estado">
+          <table class="dense">
+            <tbody>
+              {sections.map((section) => (
+                <tr>
+                  <th scope="row">{section.title}</th>
+                  <td>{section.orders.length}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+
+        {income !== null && (
+          <Card id="dashboard-incomeToday" title="Ingresos de hoy">
+            <p class="dash-amount mono">{formatClp(income)}</p>
+          </Card>
+        )}
+
+        {bookings && (
+          <Card id={`dashboard-${bookings.id}`} title={bookings.title}>
+            {bookings.bookings.length === 0 ? (
+              <p class="dash-empty">Sin reservas</p>
+            ) : (
+              <ul class="dash-list">
+                {bookings.bookings.map((booking) => (
+                  <li>
+                    <span class="mono">
+                      <time datetime={booking.serviceDate}>{booking.serviceDate}</time> · {booking.time}
+                    </span>
+                    <span>{booking.customerName} · {booking.service}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        )}
+
+        {mechanics && (
+          <Card id="dashboard-loadByMechanic" title="Carga por mecánico">
+            {mechanics.length === 0 ? (
+              <p class="dash-empty">Sin mecánicos activos</p>
+            ) : (
+              <table class="dense">
+                <thead>
+                  <tr>
+                    <th scope="col">Mecánico</th>
+                    <th scope="col">Órdenes</th>
+                    <th scope="col">Minutos</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mechanics.map((load) => (
+                    <tr>
+                      <th scope="row">{load.name}</th>
+                      <td>{load.openOrders}</td>
+                      <td>{load.minutes}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Card>
+        )}
+      </aside>
+    </div>
+  </div>
+</TallerLayout>
+
+<style is:global>
+  /* Estilos propios del inicio del taller; los del área viven en src/styles/taller.css. */
+  .taller .dash {
+    display: grid;
+    gap: 24px;
+  }
+  .taller .dash-share {
+    display: grid;
+    gap: 4px;
+  }
+  .taller .dash-url {
+    font-size: 0.86rem;
+    overflow-wrap: anywhere;
+    user-select: all;
+  }
+  .taller .dash-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .taller .dash-search {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 8px 16px;
+  }
+  .taller .dash-search .field {
+    display: grid;
+    flex: 1 1 260px;
+    gap: 8px;
+  }
+  .taller .dash-cols {
+    display: grid;
+    align-items: start;
+    gap: 24px;
+  }
+  .taller .dash-main,
+  .taller .dash-side {
+    display: grid;
+    align-content: start;
+    gap: 16px;
+  }
+  .taller .dash-section {
+    display: grid;
+    gap: 12px;
+  }
+  /* Grupo vacío: una línea, sin un título grande sin nada debajo. */
+  .taller .dash-section.is-empty {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 12px;
+    padding-block-end: 12px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .taller .dash-section.is-empty h2 {
+    font-size: 1rem;
+  }
+  .taller .dash-empty {
+    color: var(--steel);
+  }
+  .taller .order-cards {
+    display: grid;
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .taller .order-card {
+    display: grid;
+    gap: 8px;
+  }
+  .taller .order-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .taller .order-number {
+    font-size: 1rem;
+    font-weight: 500;
+  }
+  .taller .order-meta,
+  .taller .order-balance {
+    color: var(--ink-2);
+    font-size: 0.9rem;
+  }
+  .taller .order-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-block-start: 4px;
+  }
+  .taller .order-links a {
+    border: 1px solid var(--field-border);
+    border-radius: 2px;
+    text-decoration: none;
+  }
+  .taller .dash-amount {
+    font-size: 1.3rem;
+  }
+  .taller .dash-list {
+    display: grid;
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .taller .dash-list li {
+    display: grid;
+    gap: 2px;
+    font-size: 0.9rem;
+  }
+  @media (min-width: 1024px) {
+    .taller .dash-cols {
+      grid-template-columns: minmax(0, 1fr) 320px;
+    }
+    .taller .dash-side {
+      position: sticky;
+      top: 24px;
+    }
+  }
+</style>

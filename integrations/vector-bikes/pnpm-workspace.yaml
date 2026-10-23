@@ -1,0 +1,33 @@
+# Proyecto único: blueprints/ (el bundle, con su propio workspace/package.json) nunca es un paquete.
+packages:
+  - "."
+  - "!blueprints/**"
+
+# Astro, Vitest y el adaptador Netlify comparten los tipos de Vite.
+overrides:
+  vite: 8.3.5
+
+# Scripts de instalación permitidos (verificado con pnpm 12.4.2: aprueba el postinstall de esbuild).
+allowBuilds:
+  esbuild: true
+
+# pnpm 12 exige una antigüedad mínima de publicación; estas versiones fijadas eran recientes el 2026-09-15.
+# pnpm las agrega solo en el primer install; se emiten ya presentes para que el archivo no cambie.
+minimumReleaseAgeExclude:
+  - '@vitest/mocker@5.0.1'
+  - '@vitest/spy@5.0.1'
+  - resend@6.28.1
+  - vitest@5.0.1
+
+# Fase 1: el lockfile se genera en el Mac y Replit instala en linux-x64 con glibc.
+# Así el lockfile y la instalación incluyen también el binario prearmado de sharp para Linux.
+supportedArchitectures:
+  os:
+    - current
+    - linux
+  cpu:
+    - current
+    - x64
+  libc:
+    - current
+    - glibc
