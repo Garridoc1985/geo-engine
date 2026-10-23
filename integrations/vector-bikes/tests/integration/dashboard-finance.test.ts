@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it } from "vitest";
 import type { SessionUser } from "../../src/server/auth/admin-auth.ts";
 import { payments, workOrders } from "../../src/server/db/schema-orders.ts";
 import { bikes, customers } from "../../src/server/db/schema-taller.ts";
@@ -84,6 +84,10 @@ beforeEach(async () => {
     reception: await user(branch.id, "reception"),
   };
   orderId = await seedReadyOrderWithDeposit(staff.owner);
+});
+
+afterEach(async () => {
+  await test?.close();
 });
 
 it.each(["owner", "admin"] as const)("%s ve ingresos de hoy y pagos pendientes", async (role) => {

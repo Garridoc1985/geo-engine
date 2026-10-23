@@ -29,6 +29,8 @@ Producción publicó la corrección estática 6adbc4a12881ea936692ea62. Esta ram
 la página de evaluación y la función del asistente para una prueba separada, sin
 reemplazar esa producción. Las vistas previas públicas no garantizan indexación.
 
-El éxito de este build no equivale a aprobación de producción ni a validación de
-la compuerta completa del backend, que continúa pendiente. No se ejecutan pruebas
-de tablet por instrucción del responsable.
+El éxito de este build no equivale a aprobación de producción. La validación del
+backend, sus incidencias y su reejecución se registran en
+[VALIDACION-BACKEND-20261023.md](VALIDACION-BACKEND-20261023.md). No se ejecutan
+pruebas de tablet por instrucción del responsable; `gate` conserva ese paso y
+no se declara una ejecución literal del comando completo.
