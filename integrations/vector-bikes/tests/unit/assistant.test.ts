@@ -27,7 +27,10 @@ beforeEach(() => {
   vi.stubEnv("OPENAI_BASE_URL", "https://example.invalid");
   create.mockReset();
 });
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.useRealTimers();
+});
 describe("asistente público", () => {
   it("rechaza orígenes ajenos antes de invocar el proveedor", async () => {
     expect((await assistantResponse(request(undefined, "https://otro.invalid"))).status).toBe(403);
@@ -68,5 +71,58 @@ describe("asistente público", () => {
     const text = await (await assistantResponse(request())).text();
     expect(text).toContain("event: error");
     expect(text).not.toContain("event: done");
+  });
+  it("rechaza cuerpos grandes aunque no indiquen Content-Length", async () => {
+    const response = await assistantResponse(request({ question: "x".repeat(5000) }));
+    expect(response.status).toBe(422);
+    expect(create).not.toHaveBeenCalled();
+  });
+  it("no invoca el proveedor si faltan credenciales o modelo", async () => {
+    for (const name of ["OPENAI_API_KEY", "OPENAI_BASE_URL", "AI_MODEL"]) {
+      vi.stubEnv(name, "");
+      expect((await assistantResponse(request())).status).toBe(503);
+      vi.stubEnv(
+        name,
+        name === "AI_MODEL"
+          ? "test-model"
+          : name === "OPENAI_BASE_URL"
+            ? "https://example.invalid"
+            : "not-a-real-key",
+      );
+    }
+    expect(create).not.toHaveBeenCalled();
+  });
+  it("cancela el proveedor cuando el visitante deja de leer", async () => {
+    let providerSignal: AbortSignal | undefined;
+    create.mockImplementation((_input, options) => {
+      providerSignal = options.signal;
+      return (async function* () {
+        yield { type: "response.output_text.delta", delta: "Respuesta parcial" };
+        await new Promise<void>((resolve) => {
+          if (options.signal.aborted) resolve();
+          else options.signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+      })();
+    });
+    const response = await assistantResponse(request());
+    const reader = response.body?.getReader();
+    await reader?.read();
+    await reader?.cancel();
+    expect(providerSignal?.aborted).toBe(true);
+  });
+  it("interrumpe respuestas que exceden 45 segundos", async () => {
+    vi.useFakeTimers();
+    create.mockImplementation((_input, options) =>
+      (async function* () {
+        yield { type: "response.output_text.delta", delta: "Respuesta parcial" };
+        await new Promise<void>((resolve) =>
+          options.signal.addEventListener("abort", () => resolve(), { once: true }),
+        );
+      })(),
+    );
+    const response = await assistantResponse(request());
+    const rejection = expect(response.text()).rejects.toThrow("La respuesta se interrumpió.");
+    await vi.advanceTimersByTimeAsync(45_000);
+    await rejection;
   });
 });
