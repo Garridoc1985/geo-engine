@@ -6,7 +6,7 @@ import { SITE } from "../../lib/site.ts";
   <section class="section"><div class="wrap">
     <span class="label">Vector Bikes · Información del taller</span>
     <h1>Consulta al asistente.</h1>
-    <p>Respuestas generadas por IA sobre dirección, horarios y condiciones publicadas. Pueden contener errores. No envíes datos personales: tu pregunta se procesa con un proveedor de IA.</p>
+    <p>Respuestas generadas por IA sobre dirección, horarios y condiciones publicadas. Pueden contener errores. No envíes datos personales ni información confidencial: tu pregunta se envía a OpenAI mediante Netlify para generar la respuesta. Revisa el <a href="/privacidad/">aviso de privacidad</a> antes de consultar.</p>
     <form id="assistant-form">
       <div class="field"><label for="question">Tu pregunta</label><textarea id="question" name="question" required maxlength="800" rows="3"></textarea></div>
       <button class="btn" type="submit" id="ask">Consultar</button>

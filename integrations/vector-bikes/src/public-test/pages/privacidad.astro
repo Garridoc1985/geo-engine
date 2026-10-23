@@ -1,4 +1,75 @@
 ---
-import Privacy from "../../pages/privacidad.astro";
+import Base from "../../layouts/Base.astro";
+import { SITE } from "../../lib/site.ts";
 ---
-<Privacy />
+
+<Base
+  title="Aviso de privacidad — Vector Bikes"
+  description="Cómo se procesa tu información al visitar el sitio y consultar al asistente de Vector Bikes."
+  path="/privacidad"
+>
+  <section class="section">
+    <div class="wrap">
+      <article class="privacy">
+        <div class="sec-head">
+          <span class="label">Tus datos</span>
+          <h1>Aviso de privacidad</h1>
+        </div>
+        <h2>Responsable y contacto</h2>
+        <p>
+          {SITE.name}, {SITE.addressShort}. Para consultas sobre privacidad o solicitudes de acceso,
+          rectificación o eliminación de tus datos, escribe a
+          <a href={`mailto:${SITE.email}`}>{SITE.email}</a>.
+        </p>
+        <h2>Al visitar el sitio</h2>
+        <p>
+          Netlify aloja este sitio y procesa información técnica de las solicitudes, como la dirección
+          IP, para entregar las páginas y proteger el servicio. Esta versión del sitio no recibe
+          reservas en línea ni permite consultar órdenes o datos de clientes.
+        </p>
+        <h2>Si utilizas el asistente</h2>
+        <p>
+          Al pulsar Consultar, tu pregunta se envía a OpenAI mediante Netlify, junto con información
+          pública del taller, para generar una respuesta que aparece progresivamente en pantalla.
+          No envíes datos personales ni información confidencial. Cada consulta se procesa de forma
+          independiente: no se envían las preguntas anteriores como historial de conversación.
+        </p>
+        <p>
+          El asistente responde sobre información publicada y puede cometer errores. No realiza
+          reservas, confirma trabajos ni accede al historial de tu bicicleta. Para cotizaciones y
+          disponibilidad, contacta directamente al taller.
+        </p>
+        <h2>Conservación y proveedores</h2>
+        <p>
+          La aplicación no guarda las preguntas ni las respuestas en una base de datos ni en un
+          historial persistente del navegador. Esto no significa que los proveedores no conserven
+          registros: Netlify y OpenAI procesan las solicitudes conforme a sus políticas y controles
+          de seguridad. Netlify también utiliza la dirección IP para limitar consultas y prevenir abusos.
+        </p>
+        <p>
+          Puedes consultar la
+          <a href="https://www.netlify.com/privacy/" rel="noopener" target="_blank">política de privacidad de Netlify</a>,
+          su información sobre
+          <a href="https://docs.netlify.com/build/build-with-ai/security-and-privacy-for-ai-features/" rel="noopener" target="_blank">seguridad y privacidad de funciones de IA</a>
+          y los
+          <a href="https://developers.openai.com/api/docs/guides/your-data" rel="noopener" target="_blank">controles de datos de la API de OpenAI</a>.
+          Este sitio no ofrece una garantía de retención cero por parte de esos proveedores.
+        </p>
+        <h2>Si contactas al taller</h2>
+        <p>
+          Si nos escribes o llamas, recibiremos la información que compartas para responder tu
+          consulta y coordinar la atención. El correo, teléfono y los enlaces a servicios externos
+          funcionan fuera del asistente y tienen sus propias condiciones de uso y privacidad.
+        </p>
+        <p class="privacy-updated">Última actualización: 23 de octubre de 2026.</p>
+      </article>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .privacy { max-width: 68ch; }
+  .privacy h2 { margin-top: 32px; margin-bottom: 8px; }
+  .privacy p { color: var(--ink-2); }
+  .privacy-updated { margin-top: 32px; font-size: 0.84rem; color: var(--steel); }
+</style>
