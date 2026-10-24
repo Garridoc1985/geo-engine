@@ -1,0 +1,70 @@
+---
+import Base from "../../layouts/Base.astro";
+import { SITE } from "../../lib/site.ts";
+---
+<Base title="Consulta a Vector Bikes" description="Consulta información del taller Vector Bikes." path="/asistente" noindex={true} bookingEnabled={false}>
+  <section class="section"><div class="wrap">
+    <span class="label">Vector Bikes · Información del taller</span>
+    <h1>Consulta al asistente.</h1>
+    <p>Respuestas generadas por IA sobre dirección, horarios y condiciones publicadas. Pueden contener errores. No envíes datos personales ni información confidencial: tu pregunta se envía a OpenAI mediante Netlify para generar la respuesta. Revisa el <a href="/privacidad/">aviso de privacidad</a> antes de consultar.</p>
+    <form id="assistant-form">
+      <div class="field"><label for="question">Tu pregunta</label><textarea id="question" name="question" required maxlength="800" rows="3"></textarea></div>
+      <button class="btn" type="submit" id="ask">Consultar</button>
+      <button class="btn" type="button" id="stop" disabled>Detener</button>
+    </form>
+    <p id="assistant-status" role="status"></p>
+    <div id="assistant-answer" style="white-space: pre-wrap;"></div>
+    <p>Consulta siempre las <a href="/servicios/">condiciones publicadas</a>. Para cotizar o consultar disponibilidad, llama al <a href={`tel:${SITE.phone}`}>{SITE.phoneDisplay}</a>.</p>
+    <a href="/">Volver al inicio</a>
+  </div></section>
+</Base>
+<script>
+  const form = document.querySelector<HTMLFormElement>("#assistant-form");
+  const question = document.querySelector<HTMLTextAreaElement>("#question");
+  const ask = document.querySelector<HTMLButtonElement>("#ask");
+  const stop = document.querySelector<HTMLButtonElement>("#stop");
+  const status = document.querySelector<HTMLElement>("#assistant-status");
+  const answer = document.querySelector<HTMLElement>("#assistant-answer");
+  let active: AbortController | undefined;
+  stop?.addEventListener("click", () => active?.abort());
+  form?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!question || !ask || !stop || !status || !answer || active) return;
+    active = new AbortController();
+    const timer = setTimeout(() => active?.abort(), 50_000);
+    ask.disabled = true; stop.disabled = false;
+    answer.textContent = ""; status.textContent = "Conectando…";
+    try {
+      const response = await fetch("/api/asistente", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: question.value }), signal: active.signal });
+      if (!response.ok || !response.body) throw new Error(response.status === 429 ? "Alcanzaste el límite de consultas. Espera un minuto." : "El asistente no está disponible. Contacta al taller.");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let done = false;
+      status.textContent = "Respondiendo…";
+      while (true) {
+        const part = await reader.read();
+        buffer += decoder.decode(part.value, { stream: !part.done });
+        let boundary = buffer.indexOf("\n\n");
+        while (boundary >= 0) {
+          const block = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          const type = block.split("\n").find((line) => line.startsWith("event: "))?.slice(7);
+          const data = JSON.parse(block.split("\n").find((line) => line.startsWith("data: "))?.slice(6) || "{}");
+          if (type === "delta" && typeof data.text === "string") answer.textContent += data.text;
+          if (type === "error") throw new Error(data.error);
+          if (type === "done") done = true;
+          boundary = buffer.indexOf("\n\n");
+        }
+        if (part.done) break;
+      }
+      if (!done) throw new Error("La respuesta se interrumpió. Intenta nuevamente.");
+      status.textContent = "Respuesta finalizada. Verifica la información en Servicios.";
+    } catch (error) {
+      active.abort();
+      status.textContent = error instanceof DOMException && error.name === "AbortError" ? "Consulta detenida o tiempo de espera agotado." : error instanceof Error ? error.message : "No pudimos completar la consulta.";
+    } finally {
+      clearTimeout(timer); active = undefined; ask.disabled = false; stop.disabled = true;
+    }
+  });
+</script>

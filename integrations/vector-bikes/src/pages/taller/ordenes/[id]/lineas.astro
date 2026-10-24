@@ -1,0 +1,223 @@
+---
+import { z } from "zod";
+import Card from "../../../../components/taller/Card.astro";
+import OrderTabs from "../../../../components/taller/OrderTabs.astro";
+import PageHeader from "../../../../components/taller/PageHeader.astro";
+import TallerLayout from "../../../../layouts/TallerLayout.astro";
+import { ORDER_TABS } from "../../../../lib/taller-tabs.ts";
+import { isAllowedOrigin } from "../../../../server/api/handlers.ts";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../../../server/auth/permissions.ts";
+import type { Action } from "../../../../server/auth/permissions.ts";
+import { getDb } from "../../../../server/db/client.ts";
+import { formatClp } from "../../../../server/email/templates.ts";
+import { listCatalog } from "../../../../server/taller/catalog.ts";
+import {
+  addCatalogItem,
+  addPartItem,
+  catalogItemSchema,
+  listItems,
+  overrideItemPrice,
+  partItemSchema,
+  priceOverrideSchema,
+  voidItem,
+} from "../../../../server/taller/items.ts";
+import {
+  formatOrderNumber,
+  taxDocSchema,
+  updateTaxDocument,
+} from "../../../../server/taller/orders.ts";
+import {
+  STATUS_LABELS,
+  TAX_DOC_TYPES,
+  TAX_DOC_TYPE_LABELS,
+  TERMINAL_STATUSES,
+} from "../../../../server/taller/rules.ts";
+import type { BikeType, OrderStatus } from "../../../../server/taller/rules.ts";
+import { orderDetail } from "../../../../server/taller/status.ts";
+
+export const prerender = false;
+const db = getDb();
+const now = new Date();
+const user = await requireAdmin(db, Astro.cookies.get(SESSION_COOKIE)?.value, now);
+if (!user)
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location: loginRedirect(Astro.url.pathname + Astro.url.search),
+      "cache-control": "no-store",
+    },
+  });
+if (Astro.request.method === "POST" && !isAllowedOrigin(Astro.request)) return forbiddenResponse();
+if (!can(user.role, "orders.edit")) return forbiddenResponse();
+Astro.response.headers.set("cache-control", "no-store");
+
+const permissions: Record<string, Action> = {
+  catalog: "items.add_catalog",
+  part: "items.add_part",
+  price: "items.override_price",
+  void: "items.void",
+  tax: "tax_doc.edit",
+};
+const actionSchema = z.discriminatedUnion("action", [
+  catalogItemSchema.omit({ origin: true }).extend({ action: z.literal("catalog") }),
+  partItemSchema.extend({ action: z.literal("part") }),
+  priceOverrideSchema.extend({ action: z.literal("price"), itemId: z.uuid() }),
+  z.strictObject({ action: z.literal("void"), itemId: z.uuid() }),
+  taxDocSchema.extend({ action: z.literal("tax") }),
+]);
+let submitted: Record<string, string> = {};
+let parsedInput: ReturnType<typeof actionSchema.safeParse> | undefined;
+const fieldErrors = new Set<string>();
+let error = "";
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  submitted = Object.fromEntries([...form].map(([key, value]) => [key, String(value)]));
+  const permission = Object.hasOwn(permissions, submitted.action ?? "")
+    ? permissions[submitted.action ?? ""]
+    : undefined;
+  if (permission && !can(user.role, permission)) return forbiddenResponse();
+  parsedInput = actionSchema.safeParse(submitted);
+  if (!parsedInput.success) {
+    Astro.response.status = 422;
+    error = "Revisa los campos indicados del formulario.";
+    for (const issue of parsedInput.error.issues) fieldErrors.add(String(issue.path[0]));
+  }
+}
+const id = z.uuid().safeParse(Astro.params.id);
+if (!id.success)
+  return new Response("Orden no encontrada.", {
+    status: 404,
+    headers: { "cache-control": "no-store" },
+  });
+const detail = await orderDetail(db, user, id.data);
+if (!detail.ok) {
+  if (detail.code === "forbidden") return forbiddenResponse();
+  return new Response("Orden no encontrada.", {
+    status: 404,
+    headers: { "cache-control": "no-store" },
+  });
+}
+const { order, bike } = detail;
+const PATH = Astro.url.pathname;
+const items = await listItems(db, user, order.id);
+if (parsedInput?.success) {
+  const input = parsedInput.data;
+  const { action, ...fields } = input;
+  let result: { ok: boolean; code?: string } = { ok: false, code: "validation_error" };
+  if (input.action === "catalog") result = await addCatalogItem(db, user, order.id, fields, now);
+  else if (input.action === "part") result = await addPartItem(db, user, order.id, fields, now);
+  else if (input.action === "tax")
+    result = await updateTaxDocument(db, user, order.id, fields, now);
+  else if ("itemId" in input && items.some((item) => item.id === input.itemId)) {
+    result =
+      input.action === "price"
+        ? await overrideItemPrice(db, user, input.itemId, { unitPriceClp: input.unitPriceClp }, now)
+        : await voidItem(db, user, input.itemId, now);
+  } else result = { ok: false, code: "not_found" };
+  if (result.ok)
+    return new Response(null, {
+      status: 303,
+      headers: { location: `${PATH}?hecho=${action}`, "cache-control": "no-store" },
+    });
+  if (result.code === "forbidden") return forbiddenResponse();
+  Astro.response.status =
+    result.code === "not_found" ? 404 : result.code === "validation_error" ? 422 : 409;
+  error =
+    result.code === "invalid_status"
+      ? "No se pueden editar líneas de una orden entregada, cancelada o con trabajo rechazado."
+      : result.code === "no_price"
+        ? "El servicio no tiene precio para esta bicicleta."
+        : result.code === "not_found"
+          ? "No se encontró la orden o la línea."
+          : "Revisa los datos del formulario.";
+}
+const catalog = can(user.role, "items.add_catalog")
+  ? (await listCatalog(db, user)).filter((service) => service.isActive)
+  : [];
+const number = formatOrderNumber(order.number);
+const editable = !(TERMINAL_STATUSES as readonly string[]).includes(order.status);
+const notices: Record<string, string> = {
+  catalog: "Servicio agregado.",
+  part: "Repuesto agregado.",
+  price: "Precio actualizado.",
+  void: "Línea anulada.",
+  tax: "Documento tributario guardado.",
+};
+const done = Astro.url.searchParams.get("hecho") ?? "";
+const notice = Object.hasOwn(notices, done) ? notices[done] : undefined;
+function invalid(action: string, field: string, itemId?: string) {
+  return (
+    submitted.action === action &&
+    (!itemId || submitted.itemId === itemId) &&
+    fieldErrors.has(field)
+  );
+}
+const tabs = ORDER_TABS.filter((tab) => can(user.role, tab.permission));
+---
+
+<TallerLayout title={`${number} · Líneas — Vector Bikes`} description="Líneas, precios y documento tributario de la orden." path="/taller/ordenes" user={user}>
+  <div class="stack">
+    <PageHeader title={`${number} · Líneas`} status={{ status: order.status, label: STATUS_LABELS[order.status as OrderStatus] }} />
+    <OrderTabs orderId={order.id} active="lineas" tabs={tabs} />
+    {notice && <p role="status">{notice}</p>}
+    {error && <p id="form-error" role="alert">{error}</p>}
+    {!editable && <p class="muted">Las líneas de esta orden ya no se pueden editar.</p>}
+    <Card>
+      <div class="scroll-x"><table class="dense">
+        <caption>Líneas vigentes</caption>
+        <thead><tr><th scope="col">Descripción</th><th scope="col">Cantidad</th><th scope="col">Precio unitario</th><th scope="col">Subtotal</th><th scope="col">Origen</th><th scope="col">Acciones</th></tr></thead>
+        <tbody>{items.map((item) => <tr>
+          <td>{item.description}</td><td>{item.quantity}</td><td class="mono">{formatClp(item.unitPriceClp)}</td><td class="mono">{formatClp(item.quantity * item.unitPriceClp)}</td><td>{item.origin === "inicial" ? "Inicial" : "Adicional"}</td>
+          <td><div class="fields">
+            {editable && can(user.role, "items.override_price") && <form method="post" action={PATH}>
+              <input type="hidden" name="action" value="price" /><input type="hidden" name="itemId" value={item.id} />
+              <div class="field"><label for={`price-${item.id}`}>Nuevo precio de {item.description}</label>
+                <input id={`price-${item.id}`} name="unitPriceClp" type="number" required min="0" max="10000000" step="1" value={submitted.action === "price" && submitted.itemId === item.id ? submitted.unitPriceClp : item.unitPriceClp} aria-invalid={invalid("price", "unitPriceClp", item.id)} aria-describedby={invalid("price", "unitPriceClp", item.id) ? "form-error" : undefined} />
+              </div><button class="btn" type="submit">Cambiar precio</button>
+            </form>}
+            {editable && can(user.role, "items.void") && <form method="post" action={PATH}>
+              <input type="hidden" name="action" value="void" /><input type="hidden" name="itemId" value={item.id} />
+              <button class="btn ghost" type="submit" aria-label={`Anular ${item.description}`}>Anular</button>
+            </form>}
+            {(!editable || (!can(user.role, "items.override_price") && !can(user.role, "items.void"))) && <span class="muted">Sin acciones</span>}
+          </div></td>
+        </tr>)}</tbody>
+      </table></div>
+      {items.length === 0 && <p class="muted">No hay líneas registradas.</p>}
+      <p>Total para el cliente: <span class="mono">{formatClp(order.totalClp)}</span></p>
+    </Card>
+    {editable && can(user.role, "items.add_catalog") && <Card><form method="post" action={PATH}>
+      <input type="hidden" name="action" value="catalog" />
+      <fieldset><legend>Agregar servicio</legend><div class="fields">
+        <div class="field"><label for="serviceId">Servicio del catálogo</label>
+          <select id="serviceId" name="serviceId" required aria-invalid={invalid("catalog", "serviceId")} aria-describedby={invalid("catalog", "serviceId") ? "form-error" : undefined}>
+            <option value="">Selecciona un servicio</option>
+            {catalog.map((service) => <option value={service.id} selected={submitted.action === "catalog" && submitted.serviceId === service.id} disabled={service.prices[bike.bikeType as BikeType] === undefined}>
+              {service.name} · {service.prices[bike.bikeType as BikeType] === undefined ? "Sin precio para esta bicicleta" : formatClp(service.prices[bike.bikeType as BikeType]!)}
+            </option>)}
+          </select>
+        </div>
+        <div class="field"><label for="service-quantity">Cantidad</label><input id="service-quantity" name="quantity" type="number" required min="1" max="100" step="1" value={submitted.action === "catalog" ? submitted.quantity : 1} aria-invalid={invalid("catalog", "quantity")} aria-describedby={invalid("catalog", "quantity") ? "form-error" : undefined} /></div>
+      </div><button class="btn" type="submit">Agregar servicio</button></fieldset>
+    </form></Card>}
+    {editable && can(user.role, "items.add_part") && <Card><form method="post" action={PATH}>
+      <input type="hidden" name="action" value="part" />
+      <fieldset><legend>Agregar repuesto</legend><div class="fields">
+        <div class="field"><label for="part-description">Descripción</label><input id="part-description" name="description" type="text" required minlength="2" maxlength="200" value={submitted.action === "part" ? submitted.description : ""} aria-invalid={invalid("part", "description")} aria-describedby={invalid("part", "description") ? "form-error" : undefined} /></div>
+        <div class="field"><label for="part-quantity">Cantidad</label><input id="part-quantity" name="quantity" type="number" required min="1" max="100" step="1" value={submitted.action === "part" ? submitted.quantity : 1} aria-invalid={invalid("part", "quantity")} aria-describedby={invalid("part", "quantity") ? "form-error" : undefined} /></div>
+        <div class="field"><label for="part-price">Precio unitario (CLP)</label><input id="part-price" name="unitPriceClp" type="number" required min="0" max="10000000" step="1" value={submitted.action === "part" ? submitted.unitPriceClp : ""} aria-invalid={invalid("part", "unitPriceClp")} aria-describedby={invalid("part", "unitPriceClp") ? "form-error" : undefined} /></div>
+      </div><button class="btn" type="submit">Agregar repuesto</button></fieldset>
+    </form></Card>}
+    {can(user.role, "tax_doc.edit") && <Card><form method="post" action={PATH}>
+      <input type="hidden" name="action" value="tax" />
+      <fieldset><legend>Documento tributario</legend><div class="fields">
+        <div class="field"><label for="tax-type">Tipo</label><select id="tax-type" name="type" required aria-invalid={invalid("tax", "type")} aria-describedby={invalid("tax", "type") ? "form-error" : undefined}>
+          {TAX_DOC_TYPES.map((type) => <option value={type} selected={type === (submitted.action === "tax" ? submitted.type : order.taxDocType ?? "boleta")}>{TAX_DOC_TYPE_LABELS[type]}</option>)}
+        </select></div>
+        <div class="field"><label for="tax-number">Folio</label><input id="tax-number" name="number" type="text" required minlength="1" maxlength="30" value={submitted.action === "tax" ? submitted.number : order.taxDocNumber ?? ""} aria-invalid={invalid("tax", "number")} aria-describedby={invalid("tax", "number") ? "form-error" : undefined} /></div>
+        <div class="field"><label for="tax-date">Fecha</label><input id="tax-date" name="date" type="date" required value={submitted.action === "tax" ? submitted.date : order.taxDocDate ?? ""} aria-invalid={invalid("tax", "date")} aria-describedby={invalid("tax", "date") ? "form-error" : undefined} /></div>
+      </div><button class="btn" type="submit">Guardar documento tributario</button></fieldset>
+    </form></Card>}
+  </div>
+</TallerLayout>

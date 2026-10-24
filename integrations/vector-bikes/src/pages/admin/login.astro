@@ -1,0 +1,122 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getSiteEnv } from "../../lib/env.ts";
+import { clientIp } from "../../server/api/client-ip.ts";
+import { hashIp, isAllowedOrigin } from "../../server/api/handlers.ts";
+import {
+  defaultLanding,
+  loginAdmin,
+  loginFormSchema,
+  safeNextPath,
+  SESSION_COOKIE,
+  sessionCookieOptions,
+} from "../../server/auth/admin-auth.ts";
+import { getDb } from "../../server/db/client.ts";
+
+export const prerender = false;
+
+Astro.response.headers.set("cache-control", "no-store");
+
+const MESSAGES = {
+  forbidden: "No pudimos confirmar la solicitud. Recarga la página e intenta de nuevo.",
+  invalid: "Correo o clave incorrectos.",
+  rate_limited: "Demasiados intentos. Espera 15 minutos.",
+} as const;
+
+let error: keyof typeof MESSAGES | null = null;
+let email = "";
+// El destino viaja en el formulario: un intento fallido lo conserva para el reintento.
+let next = safeNextPath(Astro.url.searchParams.get("next"));
+
+if (Astro.request.method === "POST") {
+  if (!isAllowedOrigin(Astro.request)) {
+    error = "forbidden";
+    Astro.response.status = 403;
+  } else {
+    const form = await Astro.request.formData();
+    next = safeNextPath(form.get("next"));
+    const parsed = loginFormSchema.safeParse({
+      email: form.get("email"),
+      password: form.get("password"),
+    });
+    email = typeof form.get("email") === "string" ? String(form.get("email")) : "";
+    const ip = clientIp(Astro.request, null) ?? Astro.clientAddress ?? "sin-ip-conocida";
+    const result = parsed.success
+      ? await loginAdmin(getDb(), {
+          email: parsed.data.email,
+          password: parsed.data.password,
+          ipHash: hashIp(ip) ?? ip,
+          now: new Date(),
+        })
+      : ({ ok: false, code: "invalid" } as const);
+    if (result.ok) {
+      Astro.cookies.set(
+        SESSION_COOKIE,
+        result.token,
+        sessionCookieOptions(getSiteEnv().PUBLIC_SITE_URL),
+      );
+      return Astro.redirect(next ?? defaultLanding(result.role), 303);
+    }
+    error = result.code;
+    Astro.response.status = result.code === "rate_limited" ? 429 : 401;
+    if (result.code === "rate_limited") {
+      Astro.response.headers.set("Retry-After", "900");
+    }
+  }
+}
+---
+
+<Base
+  title="Ingresar — Vector Bikes"
+  description="Acceso al panel del taller Vector Bikes."
+  path="/admin/login"
+  chrome="none"
+  noindex
+>
+  <section class="section">
+    <div class="wrap" style="max-width:32rem">
+      <div class="sec-head">
+        <span class="label">Panel del taller</span>
+        <h1>Ingresar</h1>
+      </div>
+      {
+        error && (
+          <p role="alert" style="margin-bottom:20px;font-weight:600">
+            {MESSAGES[error]}
+          </p>
+        )
+      }
+      <form method="post" action="/admin/login">
+        <input type="hidden" name="next" value={next ?? ""} />
+        <div class="fields">
+          <div class="field full">
+            <label for="email">Correo</label>
+            <input
+              type="email"
+              id="email"
+              name="email"
+              autocomplete="username"
+              required
+              value={email}
+            />
+          </div>
+          <div class="field full">
+            <label for="password">Clave</label>
+            <input
+              type="password"
+              id="password"
+              name="password"
+              autocomplete="current-password"
+              required
+            />
+          </div>
+          <div class="full">
+            <button type="submit" class="btn">
+              Ingresar
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </section>
+</Base>

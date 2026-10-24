@@ -1,0 +1,278 @@
+---
+import { DateTime } from "luxon";
+import { z } from "zod";
+import Card from "../../../components/taller/Card.astro";
+import PageHeader from "../../../components/taller/PageHeader.astro";
+import ReceptionSteps from "../../../components/taller/ReceptionSteps.astro";
+import TallerLayout from "../../../layouts/TallerLayout.astro";
+import { isAllowedOrigin } from "../../../server/api/handlers.ts";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../../server/auth/permissions.ts";
+import { TIMEZONE } from "../../../server/booking/rules.ts";
+import { getDb } from "../../../server/db/client.ts";
+import { listBikesOfCustomer } from "../../../server/taller/bikes.ts";
+import { getCustomer } from "../../../server/taller/customers.ts";
+import {
+  prefillFromBooking,
+  startReception,
+  startReceptionSchema,
+} from "../../../server/taller/orders.ts";
+import { BIKE_TYPES, BIKE_TYPE_LABELS } from "../../../server/taller/rules.ts";
+import { searchQuerySchema, searchTaller } from "../../../server/taller/search.ts";
+
+export const prerender = false;
+const PATH = "/taller/recepcion/nueva";
+const db = getDb();
+const now = new Date();
+const user = await requireAdmin(db, Astro.cookies.get(SESSION_COOKIE)?.value, now);
+if (!user)
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location: loginRedirect(Astro.url.pathname + Astro.url.search),
+      "cache-control": "no-store",
+    },
+  });
+if (!can(user.role, "reception.perform")) return forbiddenResponse();
+Astro.response.headers.set("cache-control", "no-store");
+let submitted: Record<string, string> = {};
+const fieldErrors: Record<string, string> = {};
+let error = "";
+let existing: { id: string; name: string } | null = null;
+
+if (Astro.request.method === "POST") {
+  if (!isAllowedOrigin(Astro.request)) return forbiddenResponse();
+  if (!can(user.role, "reception.perform")) return forbiddenResponse();
+  const form = await Astro.request.formData();
+  submitted = Object.fromEntries([...form].map(([key, value]) => [key, String(value)]));
+  const parsed = startReceptionSchema.safeParse({
+    bookingId: submitted.bookingId || null,
+    customerId: submitted.customerId || null,
+    customer: submitted.customerId
+      ? undefined
+      : {
+          name: submitted.name,
+          phoneE164: submitted.phoneE164,
+          email: submitted.email,
+          rut: submitted.rut,
+        },
+    bikeId: submitted.bikeId || null,
+    bike: submitted.bikeId
+      ? undefined
+      : {
+          brand: submitted.brand,
+          model: submitted.model,
+          bikeType: submitted.bikeType,
+        },
+    requestedService: submitted.requestedService,
+  });
+  if (!parsed.success) {
+    Astro.response.status = 422;
+    error = "Revisa los datos para iniciar la recepción.";
+    for (const issue of parsed.error.issues)
+      fieldErrors[String(issue.path.at(-1) ?? "formulario")] ??= issue.message;
+  } else {
+    const result = await startReception(db, user, parsed.data, now);
+    if (result.ok)
+      return new Response(null, {
+        status: 303,
+        headers: {
+          location: `/taller/ordenes/${result.orderId}/recepcion`,
+          "cache-control": "no-store",
+        },
+      });
+    if (result.code === "forbidden") return forbiddenResponse();
+    Astro.response.status =
+      result.code === "not_found" ? 404 : result.code === "validation_error" ? 422 : 409;
+    if (result.code === "duplicate") {
+      existing = result.existing;
+      error = existing ? `Ya existe: ${existing.name}` : "Ese RUT ya está registrado.";
+    } else {
+      error =
+        result.code === "booking_taken"
+          ? "La reserva ya tiene una orden o no está disponible. Revisa la agenda."
+          : result.code === "not_found"
+            ? "No se encontró el cliente o la bicicleta en tu sucursal."
+            : "Revisa los datos para iniciar la recepción.";
+    }
+  }
+}
+
+const selection = z
+  .object({
+    reserva: z.uuid().nullable(),
+    cliente: z.uuid().nullable(),
+  })
+  .safeParse({
+    reserva: Astro.url.searchParams.get("reserva"),
+    cliente: Astro.url.searchParams.get("cliente"),
+  });
+if (!selection.success)
+  return new Response("Reserva o cliente no encontrado.", {
+    status: 404,
+    headers: { "cache-control": "no-store" },
+  });
+const { reserva: bookingId, cliente: selectedCustomerId } = selection.data;
+const bookingData = bookingId ? await prefillFromBooking(db, user, bookingId) : null;
+if (bookingId && !bookingData)
+  return new Response("Reserva no encontrada.", {
+    status: 404,
+    headers: { "cache-control": "no-store" },
+  });
+const selectedCustomer = selectedCustomerId
+  ? await getCustomer(db, user, selectedCustomerId)
+  : null;
+if (selectedCustomerId && !selectedCustomer)
+  return new Response("Cliente no encontrado.", {
+    status: 404,
+    headers: { "cache-control": "no-store" },
+  });
+const customer = selectedCustomer ?? bookingData?.existingCustomer ?? null;
+const bikes = selectedCustomer
+  ? await listBikesOfCustomer(db, user, selectedCustomer.id)
+  : (bookingData?.existingCustomer?.bikes ?? []);
+const values: Record<string, string> = {
+  name: bookingData?.prefill.name ?? "",
+  phoneE164: bookingData?.prefill.phoneE164 ?? "",
+  email: bookingData?.prefill.email ?? "",
+  rut: "",
+  brand: bookingData?.prefill.brand ?? "",
+  model: bookingData?.prefill.model ?? "",
+  requestedService: bookingData?.prefill.requestedService ?? "",
+  bikeId: bikes[0]?.id ?? "",
+  ...submitted,
+};
+const q = Astro.url.searchParams.get("q") ?? "";
+const query = searchQuerySchema.safeParse(q);
+const results = query.success
+  ? await searchTaller(db, user, query.data)
+  : { customers: [], orders: [] };
+const customerLink = (id: string) =>
+  `${PATH}?cliente=${id}${bookingId ? `&reserva=${bookingId}` : ""}`;
+const customerFields = [
+  {
+    key: "name",
+    label: "Nombre",
+    type: "text",
+    required: true,
+    maxlength: 120,
+    autocomplete: "name",
+  },
+  {
+    key: "phoneE164",
+    label: "Teléfono",
+    type: "tel",
+    required: true,
+    maxlength: 30,
+    autocomplete: "tel",
+  },
+  {
+    key: "email",
+    label: "Correo",
+    type: "email",
+    required: false,
+    maxlength: 254,
+    autocomplete: "email",
+  },
+  { key: "rut", label: "RUT", type: "text", required: false, maxlength: 20, autocomplete: "off" },
+] as const;
+const bikeFields = [
+  { key: "brand", label: "Marca", maxlength: 60 },
+  { key: "model", label: "Modelo", maxlength: 80 },
+];
+---
+
+<TallerLayout title="Nueva recepción — Vector Bikes" description="Iniciar la recepción de una bicicleta." path={PATH} user={user}>
+  <div class="stack">
+    <PageHeader title="Nueva recepción" />
+    <ReceptionSteps current={1} />
+    {bookingData && (
+      <Card label="Resumen de la reserva" title="Reserva">
+        <p>{bookingData.booking.customerName} · {bookingData.booking.bike}</p>
+        <p>{DateTime.fromISO(bookingData.booking.serviceDate).toFormat("dd/MM/yyyy")} · {DateTime.fromJSDate(bookingData.booking.startsAt).setZone(TIMEZONE).toFormat("HH:mm")}</p>
+        <p>{bookingData.prefill.requestedService}</p>
+      </Card>
+    )}
+    <Card><form method="get" action={PATH}>
+      {bookingId && <input type="hidden" name="reserva" value={bookingId} />}
+      <div class="fields">
+        <div class="field">
+          <label for="customer-search">Nombre, teléfono o RUT</label>
+          <input id="customer-search" name="q" type="search" maxlength="80" value={q} />
+        </div>
+      </div>
+      <button type="submit" class="btn ghost">Buscar cliente</button>
+    </form></Card>
+    {q && (
+      <Card label="Resultados de clientes">
+        {results.customers.map((hit) => <p><a href={customerLink(hit.id)}>{hit.name}</a></p>)}
+        {results.customers.length === 0 && <p class="muted">Sin resultados.</p>}
+      </Card>
+    )}
+    {error && (
+      <div role="alert">
+        <p>{error}</p>
+        {existing && <a href={customerLink(existing.id)}>Usar ficha existente</a>}
+      </div>
+    )}
+    <form method="post" action={PATH + Astro.url.search} class="stack">
+      <input type="hidden" name="bookingId" value={bookingId ?? ""} />
+      <input type="hidden" name="customerId" value={customer?.id ?? ""} />
+      {customer ? (
+        <Card label="Cliente seleccionado" title="Cliente">
+          <p>{customer.name}</p>
+        </Card>
+      ) : (
+        <Card label="Cliente nuevo" title="Cliente nuevo">
+          <div class="fields">
+            {customerFields.map((field) => (
+              <div class="field">
+                <label for={field.key}>{field.label}</label>
+                <input id={field.key} name={field.key} type={field.type} required={field.required} maxlength={field.maxlength} autocomplete={field.autocomplete} value={values[field.key] ?? ""} aria-invalid={Boolean(fieldErrors[field.key])} aria-describedby={fieldErrors[field.key] ? `${field.key}-error` : undefined} />
+                {fieldErrors[field.key] && <p id={`${field.key}-error`}>{fieldErrors[field.key]}</p>}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+      <Card><div class="fields">
+        {bikes.length > 0 && (
+          <fieldset>
+            <legend>Bicicleta</legend>
+            <div class="options">
+              {bikes.map((bike) => (
+                <label><input type="radio" name="bikeId" value={bike.id} checked={values.bikeId === bike.id} aria-invalid={Boolean(fieldErrors.bikeId)} aria-describedby={fieldErrors.bikeId ? "bikeId-error" : undefined} />{bike.brand} {bike.model} · {BIKE_TYPE_LABELS[bike.bikeType as keyof typeof BIKE_TYPE_LABELS]}</label>
+              ))}
+              <label><input type="radio" name="bikeId" value="" checked={!values.bikeId} aria-invalid={Boolean(fieldErrors.bikeId)} aria-describedby={fieldErrors.bikeId ? "bikeId-error" : undefined} />Bicicleta nueva</label>
+            </div>
+            {fieldErrors.bikeId && <p id="bikeId-error">{fieldErrors.bikeId}</p>}
+          </fieldset>
+        )}
+        <h2>Bicicleta nueva</h2>
+        {bikes.length > 0 && <p class="muted">Completa estos datos si seleccionaste «Bicicleta nueva».</p>}
+        {bikeFields.map((field) => (
+          <div class="field">
+            <label for={field.key}>{field.label}</label>
+            <input id={field.key} name={field.key} type="text" required={bikes.length === 0} maxlength={field.maxlength} value={values[field.key] ?? ""} aria-invalid={Boolean(fieldErrors[field.key])} aria-describedby={fieldErrors[field.key] ? `${field.key}-error` : undefined} />
+            {fieldErrors[field.key] && <p id={`${field.key}-error`}>{fieldErrors[field.key]}</p>}
+          </div>
+        ))}
+        <fieldset>
+          <legend>Tipo de bicicleta</legend>
+          <div class="options">
+            {BIKE_TYPES.map((type) => (
+              <label><input type="radio" name="bikeType" value={type} required={bikes.length === 0} checked={values.bikeType === type} aria-invalid={Boolean(fieldErrors.bikeType)} aria-describedby={fieldErrors.bikeType ? "bikeType-error" : undefined} />{BIKE_TYPE_LABELS[type]}</label>
+            ))}
+          </div>
+          {fieldErrors.bikeType && <p id="bikeType-error">{fieldErrors.bikeType}</p>}
+        </fieldset>
+        <div class="field">
+          <label for="requestedService">Servicio solicitado</label>
+          <textarea id="requestedService" name="requestedService" required maxlength="2000" rows="3" aria-invalid={Boolean(fieldErrors.requestedService)} aria-describedby={fieldErrors.requestedService ? "requestedService-error" : undefined}>{values.requestedService ?? ""}</textarea>
+          {fieldErrors.requestedService && <p id="requestedService-error">{fieldErrors.requestedService}</p>}
+        </div>
+      </div></Card>
+      <button type="submit" class="btn">Crear orden</button>
+    </form>
+  </div>
+</TallerLayout>

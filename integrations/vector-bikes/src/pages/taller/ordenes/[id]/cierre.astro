@@ -1,0 +1,178 @@
+---
+import { DateTime } from "luxon";
+import { z } from "zod";
+import Card from "../../../../components/taller/Card.astro";
+import OrderTabs from "../../../../components/taller/OrderTabs.astro";
+import PageHeader from "../../../../components/taller/PageHeader.astro";
+import PhotoCapture from "../../../../components/taller/PhotoCapture.tsx";
+import ReceptionSteps from "../../../../components/taller/ReceptionSteps.astro";
+import SignaturePad from "../../../../components/taller/SignaturePad.tsx";
+import TallerLayout from "../../../../layouts/TallerLayout.astro";
+import { ORDER_TABS } from "../../../../lib/taller-tabs.ts";
+import { isAllowedOrigin } from "../../../../server/api/handlers.ts";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../../../server/auth/permissions.ts";
+import { TIMEZONE } from "../../../../server/booking/rules.ts";
+import { getDb } from "../../../../server/db/client.ts";
+import { getStorage } from "../../../../server/storage/storage.ts";
+import { formatOrderNumber, getOrderHeader } from "../../../../server/taller/orders.ts";
+import { listOrderPhotos } from "../../../../server/taller/photos.ts";
+import {
+  finalizeReception,
+  receptionReadiness,
+  receptionSignature,
+} from "../../../../server/taller/reception.ts";
+import { BIKE_TYPE_LABELS, STATUS_LABELS } from "../../../../server/taller/rules.ts";
+import type { BikeType, OrderStatus } from "../../../../server/taller/rules.ts";
+
+export const prerender = false;
+const db = getDb();
+const now = new Date();
+const user = await requireAdmin(db, Astro.cookies.get(SESSION_COOKIE)?.value, now);
+if (!user)
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location: loginRedirect(Astro.url.pathname + Astro.url.search),
+      "cache-control": "no-store",
+    },
+  });
+if (!can(user.role, "reception.perform")) return forbiddenResponse();
+Astro.response.headers.set("cache-control", "no-store");
+const id = z.uuid().safeParse(Astro.params.id);
+const header = id.success ? await getOrderHeader(db, user, id.data) : null;
+if (!header || header.order.voidedAt)
+  return new Response("Orden no encontrada.", {
+    status: 404,
+    headers: { "cache-control": "no-store" },
+  });
+const { order, customer, bike } = header;
+if (
+  user.role === "mechanic" &&
+  order.assignedMechanicId !== user.id &&
+  (order.assignedMechanicId !== null ||
+    !["reservada", "recibida", "diagnostico"].includes(order.status))
+)
+  return forbiddenResponse();
+const number = formatOrderNumber(order.number);
+const receptionUrl = `/taller/ordenes/${order.id}/recepcion`;
+const missingMessages = {
+  checklist: "Falta completar el checklist",
+  fotos: "Falta al menos una foto de recepción",
+  fecha: "Falta confirmar la fecha de entrega",
+  firma: "Falta la firma del cliente",
+};
+const formSchema = z.object({
+  orderId: z.uuid(),
+  signatureDataUrl: z.string(),
+  signedByName: z
+    .string()
+    .trim()
+    .min(2, "Escribe el nombre de quien firma.")
+    .max(80, "El nombre debe tener hasta 80 caracteres."),
+});
+let signedByName = "";
+let nameError = "";
+let errors: string[] = [];
+if (Astro.request.method === "POST") {
+  if (!isAllowedOrigin(Astro.request)) return forbiddenResponse();
+  const form = await Astro.request.formData();
+  const parsed = formSchema.safeParse({
+    orderId: order.id,
+    signatureDataUrl: form.get("firma"),
+    signedByName: form.get("nombre"),
+  });
+  signedByName = typeof form.get("nombre") === "string" ? String(form.get("nombre")) : "";
+  if (!parsed.success) {
+    Astro.response.status = 422;
+    nameError =
+      parsed.error.issues.find((issue) => issue.path[0] === "signedByName")?.message ?? "";
+    errors = [nameError || "Revisa los datos de la recepción."];
+  } else {
+    const result = await finalizeReception(db, await getStorage(), user, parsed.data, now);
+    if (result.ok)
+      return new Response(null, {
+        status: 303,
+        headers: { location: `${receptionUrl}?hecho=recibida`, "cache-control": "no-store" },
+      });
+    if (result.code === "forbidden") return forbiddenResponse();
+    Astro.response.status =
+      result.code === "not_found"
+        ? 404
+        : result.code === "invalid_status" || result.code === "already_signed"
+          ? 409
+          : 422;
+    errors =
+      result.code === "incomplete"
+        ? result.missing.map((item) => missingMessages[item])
+        : [
+            result.code === "invalid_signature"
+              ? "La firma no es válida; vuelve a firmar."
+              : result.code === "not_found"
+                ? "Orden no encontrada."
+                : result.code === "invalid_status" || result.code === "already_signed"
+                  ? "La recepción ya no está pendiente."
+                  : "Revisa los datos de la recepción.",
+          ];
+  }
+}
+const missing = await receptionReadiness(db, order.id);
+const photos = (await listOrderPhotos(db, user, order.id)).filter(
+  (photo) => photo.stage === "recepcion",
+);
+const tabs = ORDER_TABS.filter((tab) => can(user.role, tab.permission));
+const signature =
+  order.status !== "reservada" ? await receptionSignature(db, user, order.id) : null;
+const receivedAt = signature?.signedAt ?? order.receivedAt;
+/** `null` cuando la orden no registra fecha: el texto se arma sin ella. */
+const receptionDate = receivedAt
+  ? DateTime.fromJSDate(receivedAt)
+      .setZone(TIMEZONE)
+      .setLocale("es-CL")
+      .toFormat("cccc d 'de' LLLL 'de' yyyy")
+  : null;
+---
+
+<TallerLayout title={`${number} · Fotos y firma — Vector Bikes`} description="Completar las fotos y la firma de recepción." path="/taller/recepcion/nueva" user={user}>
+  <div class="stack">
+    <PageHeader title={number} status={{ status: order.status, label: STATUS_LABELS[order.status as OrderStatus] }} />
+    <OrderTabs orderId={order.id} active="cierre" tabs={tabs} />
+    <ReceptionSteps current={order.status !== "reservada" || photos.length > 0 ? 4 : 3} />
+    <div class="fields">
+      <Card title="Cliente">
+        <p>{customer.name}</p>
+      </Card>
+      <Card title="Bicicleta">
+        <p>{bike.brand} {bike.model} · {BIKE_TYPE_LABELS[bike.bikeType as BikeType]}</p>
+      </Card>
+    </div>
+    {errors.length > 0 && <div role="alert"><ul>{errors.map((message) => <li>{message}</li>)}</ul></div>}
+    <Card id="readiness-heading" title="Preparación">
+      <ul>
+        <li>Checklist: {missing.includes("checklist") ? "Pendiente" : "Completo"}</li>
+        <li>Fotos de recepción ({photos.length}): {missing.includes("fotos") ? "Pendientes" : "Completas"}</li>
+        <li>Fecha de entrega: {missing.includes("fecha") ? "Pendiente" : `Confirmada: ${order.estimatedDeliveryDate}`}</li>
+        <li>Firma del cliente: {missing.includes("firma") ? "Pendiente" : "Registrada"}</li>
+      </ul>
+    </Card>
+    <Card id="photos-heading" title="Fotos de recepción">
+      <div class="grid-photos">
+        {photos.map((photo, index) => <img src={photo.thumbUrl} alt={`Foto de recepción ${index + 1}`} />)}
+      </div>
+      <PhotoCapture client:load uploadUrl={`/taller/ordenes/${order.id}/fotos`} stage="recepcion" />
+    </Card>
+    {order.status === "reservada" ? <Card title="Firma del cliente"><form method="post" action={Astro.url.pathname}>
+      <div class="fields">
+        <div class="full"><SignaturePad client:load name="firma" label="Firma del cliente" /></div>
+        <div class="field">
+          <label for="signer-name">Nombre de quien firma</label>
+          <input id="signer-name" name="nombre" type="text" required minlength="2" maxlength="80" autocomplete="name" value={signedByName} aria-invalid={Boolean(nameError)} aria-describedby={nameError ? "signer-name-error" : undefined} />
+          {nameError && <p id="signer-name-error">{nameError}</p>}
+        </div>
+      </div>
+      <button type="submit" class="btn">Finalizar recepción</button>
+    </form></Card> : <Card title="Firma del cliente">
+      <p>Recepción finalizada{receptionDate && ` el ${receptionDate}`}{signature && ` · firmó ${signature.signedByName}`}</p>
+    </Card>}
+  </div>
+</TallerLayout>

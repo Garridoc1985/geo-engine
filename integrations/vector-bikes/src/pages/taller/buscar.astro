@@ -1,0 +1,75 @@
+---
+import Card from "../../components/taller/Card.astro";
+import PageHeader from "../../components/taller/PageHeader.astro";
+import TallerLayout from "../../layouts/TallerLayout.astro";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../server/auth/permissions.ts";
+import { getDb } from "../../server/db/client.ts";
+import { STATUS_LABELS } from "../../server/taller/rules.ts";
+import type { OrderStatus } from "../../server/taller/rules.ts";
+import { searchQuerySchema, searchTaller } from "../../server/taller/search.ts";
+
+export const prerender = false;
+const PATH = "/taller/buscar";
+const db = getDb();
+const user = await requireAdmin(db, Astro.cookies.get(SESSION_COOKIE)?.value, new Date());
+if (!user)
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location: loginRedirect(Astro.url.pathname + Astro.url.search),
+      "cache-control": "no-store",
+    },
+  });
+if (!can(user.role, "orders.edit")) return forbiddenResponse();
+Astro.response.headers.set("cache-control", "no-store");
+const q = Astro.url.searchParams.get("q") ?? "";
+const parsed = searchQuerySchema.safeParse(q);
+const results = parsed.success
+  ? await searchTaller(db, user, parsed.data)
+  : { customers: [], orders: [] };
+const canManageCustomers = can(user.role, "customers.manage");
+---
+
+<TallerLayout title="Buscar — Vector Bikes" description="Busca clientes y órdenes de tu sucursal." path={PATH} user={user}>
+  <div class="stack">
+    <PageHeader title="Buscar" />
+    <Card><form method="get" action={PATH}>
+      <div class="fields">
+        <div class="field">
+          <label for="workshop-search">Nombre, teléfono, RUT o número de orden</label>
+          <input id="workshop-search" name="q" type="search" maxlength="80" value={q} />
+        </div>
+      </div>
+      <button type="submit" class="btn">Buscar</button>
+    </form></Card>
+    {results.orders.length > 0 && <Card><div class="scroll-x">
+      <table class="dense">
+        <caption>Órdenes</caption>
+        <thead><tr><th scope="col">Número</th><th scope="col">Estado</th></tr></thead>
+        <tbody>{results.orders.map((order) => (
+          <tr>
+            <th scope="row"><a href={`/taller/ordenes/${order.id}`}>{order.label}</a></th>
+            <td><span class={`status status--${order.status}`}>{STATUS_LABELS[order.status as OrderStatus]}</span></td>
+          </tr>
+        ))}</tbody>
+      </table>
+    </div></Card>}
+    <Card><div class="scroll-x">
+      <table class="dense">
+        <caption>Clientes de tu sucursal</caption>
+        <thead><tr><th scope="col">Nombre</th></tr></thead>
+        <tbody>
+          {results.customers.map((customer) => (
+            <tr>
+              <th scope="row">
+                <a href={canManageCustomers ? `/taller/clientes/${customer.id}` : `/taller/recepcion/nueva?cliente=${customer.id}`}>{customer.name}</a>
+              </th>
+            </tr>
+          ))}
+          {results.customers.length === 0 && results.orders.length === 0 && <tr><td class="muted">Sin resultados.</td></tr>}
+        </tbody>
+      </table>
+    </div></Card>
+  </div>
+</TallerLayout>

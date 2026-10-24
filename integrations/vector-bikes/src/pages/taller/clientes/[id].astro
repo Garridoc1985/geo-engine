@@ -1,0 +1,316 @@
+---
+import { DateTime } from "luxon";
+import { z } from "zod";
+import Card from "../../../components/taller/Card.astro";
+import PageHeader from "../../../components/taller/PageHeader.astro";
+import TallerLayout from "../../../layouts/TallerLayout.astro";
+import { isAllowedOrigin } from "../../../server/api/handlers.ts";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../../server/auth/permissions.ts";
+import { TIMEZONE } from "../../../server/booking/rules.ts";
+import { getDb } from "../../../server/db/client.ts";
+import { bikeFormSchema, createBike, listBikesOfCustomer } from "../../../server/taller/bikes.ts";
+import {
+  customerFormSchema,
+  findDuplicates,
+  getCustomer,
+  updateCustomer,
+} from "../../../server/taller/customers.ts";
+import { customerTimeline } from "../../../server/taller/history.ts";
+import {
+  BIKE_TYPES,
+  BIKE_TYPE_LABELS,
+  DISCOVERY_CHANNELS,
+  DISCOVERY_CHANNEL_LABELS,
+} from "../../../server/taller/rules.ts";
+
+export const prerender = false;
+const db = getDb();
+const now = new Date();
+const user = await requireAdmin(db, Astro.cookies.get(SESSION_COOKIE)?.value, now);
+if (!user)
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location: loginRedirect(Astro.url.pathname + Astro.url.search),
+      "cache-control": "no-store",
+    },
+  });
+if (!can(user.role, "customers.manage")) return forbiddenResponse();
+Astro.response.headers.set("cache-control", "no-store");
+if (Astro.request.method === "POST") {
+  if (!isAllowedOrigin(Astro.request)) return forbiddenResponse();
+  if (!can(user.role, "customers.manage")) return forbiddenResponse();
+}
+const id = z.uuid().safeParse(Astro.params.id);
+if (!id.success)
+  return new Response("Cliente no encontrado.", {
+    status: 404,
+    headers: { "cache-control": "no-store" },
+  });
+const PATH = `/taller/clientes/${id.data}`;
+const customer = await getCustomer(db, user, id.data);
+if (!customer)
+  return new Response("Cliente no encontrado.", {
+    status: 404,
+    headers: { "cache-control": "no-store" },
+  });
+const formSchema = z.discriminatedUnion("accion", [
+  customerFormSchema.extend({
+    accion: z.literal("editar"),
+    allow_phone_duplicate: z.literal("1").optional(),
+  }),
+  bikeFormSchema.extend({ accion: z.literal("bicicleta") }),
+]);
+const bikeFields = [
+  { key: "brand", label: "Marca", maxlength: 60, required: true },
+  { key: "model", label: "Modelo", maxlength: 80, required: true },
+  { key: "size", label: "Talla", maxlength: 20, required: false },
+  { key: "color", label: "Color", maxlength: 40, required: false },
+  { key: "serialNumber", label: "Número de serie", maxlength: 80, required: false },
+];
+const bikeNumbers = [
+  { key: "year", label: "Año", min: 1980, max: 2100 },
+  { key: "kmNoted", label: "Kilometraje anotado", min: 0, max: 2147483647 },
+];
+let bikeValues: Record<string, string> = {};
+const bikeErrors: Record<string, string> = {};
+let bikeError = "";
+const fields: {
+  key: string;
+  label: string;
+  type: "text" | "tel" | "email";
+  required: boolean;
+  autocomplete: string;
+  maxlength?: number;
+}[] = [
+  {
+    key: "name",
+    label: "Nombre",
+    type: "text",
+    required: true,
+    autocomplete: "name",
+    maxlength: 120,
+  },
+  { key: "phoneE164", label: "Teléfono", type: "tel", required: true, autocomplete: "tel" },
+  { key: "email", label: "Correo", type: "email", required: false, autocomplete: "email" },
+  { key: "rut", label: "RUT", type: "text", required: false, autocomplete: "off" },
+];
+const valueKeys = [...fields.map((field) => field.key), "discoveryChannel", "notes"];
+let values: Record<string, string> = Object.fromEntries(
+  valueKeys.map((key) => [key, String(customer[key as keyof typeof customer] ?? "")]),
+);
+const fieldErrors: Record<string, string> = {};
+let error = "";
+let existing: { id: string; name: string } | null = null;
+let canOverridePhone = false;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const raw = Object.fromEntries([...form].map(([key, value]) => [key, String(value)]));
+  const isBikeAction = raw.accion === "bicicleta";
+  if (isBikeAction) bikeValues = raw;
+  else values = raw;
+  const parsed = formSchema.safeParse({ ...raw, accion: raw.accion ?? "editar" });
+  if (!parsed.success) {
+    Astro.response.status = 422;
+    if (isBikeAction) bikeError = "Revisa los datos de la bicicleta.";
+    else error = "Revisa los datos del cliente.";
+    for (const issue of parsed.error.issues) {
+      (isBikeAction ? bikeErrors : fieldErrors)[String(issue.path[0])] = issue.message;
+    }
+  } else if (parsed.data.accion === "bicicleta") {
+    const result = await createBike(db, user, id.data, parsed.data, now);
+    if (result.ok)
+      return new Response(null, {
+        status: 303,
+        headers: { location: `${PATH}?hecho=bicicleta`, "cache-control": "no-store" },
+      });
+    if (result.code === "forbidden") return forbiddenResponse();
+    Astro.response.status = result.code === "not_found" ? 404 : 422;
+    bikeError =
+      result.code === "not_found" ? "Cliente no encontrado." : "Revisa los datos de la bicicleta.";
+  } else {
+    const result = await updateCustomer(db, user, id.data, parsed.data, now, {
+      allowPhoneDuplicate: parsed.data.allow_phone_duplicate === "1",
+    });
+    if (result.ok)
+      return new Response(null, {
+        status: 303,
+        headers: { location: `${PATH}?hecho=editar`, "cache-control": "no-store" },
+      });
+    if (result.code === "forbidden") return forbiddenResponse();
+    if (result.code === "not_found")
+      return new Response("Cliente no encontrado.", {
+        status: 404,
+        headers: { "cache-control": "no-store" },
+      });
+    if (result.code === "duplicate") {
+      Astro.response.status = 409;
+      const duplicates = await findDuplicates(db, user.branchId, {
+        phoneE164: parsed.data.phoneE164,
+        rut: parsed.data.rut,
+      });
+      if (result.existing === null) {
+        error = "Ese RUT ya está registrado.";
+      } else {
+        const rutDuplicate = duplicates.rut?.id === id.data ? null : duplicates.rut;
+        // findDuplicates puede devolver esta ficha primero si ya comparte el teléfono.
+        const phoneDuplicate =
+          duplicates.phone?.id === id.data ? result.existing : duplicates.phone;
+        existing = rutDuplicate ?? phoneDuplicate ?? result.existing;
+        canOverridePhone = !rutDuplicate && Boolean(phoneDuplicate);
+        error = `Ya existe: ${existing.name}`;
+      }
+    }
+  }
+}
+const notices: Record<string, string> = {
+  editar: "Cliente actualizado.",
+  bicicleta: "Bicicleta agregada.",
+};
+const notice = notices[Astro.url.searchParams.get("hecho") ?? ""];
+const customerBikes = await listBikesOfCustomer(db, user, id.data);
+const history = await customerTimeline(db, user, id.data);
+---
+
+<TallerLayout title={`${customer.name} — Vector Bikes`} description="Ficha y edición del cliente del taller." path="/taller/clientes" user={user}>
+  <div class="stack">
+    <PageHeader title={customer.name}>
+      <a slot="actions" href="/taller/clientes">Volver a clientes</a>
+    </PageHeader>
+    {notice && <p role="status">{notice}</p>}
+    {error && (
+      <div role="alert">
+        <p>{error}</p>
+        {existing && <a href={`/taller/clientes/${existing.id}`}>Usar ficha existente</a>}
+        {canOverridePhone && (
+          <form method="post" action={PATH}>
+            <input type="hidden" name="accion" value="editar" />
+            {valueKeys.map((key) => <input type="hidden" name={key} value={values[key] ?? ""} />)}
+            <input type="hidden" name="allow_phone_duplicate" value="1" />
+            <button type="submit" class="btn">Crear de todas formas</button>
+          </form>
+        )}
+      </div>
+    )}
+    <Card><form method="post" action={PATH}>
+      <input type="hidden" name="accion" value="editar" />
+      <div class="fields">
+        {fields.map((field) => (
+          <div class="field">
+            <label for={field.key}>{field.label}</label>
+            <input id={field.key} name={field.key} type={field.type} required={field.required} autocomplete={field.autocomplete} maxlength={field.maxlength} value={values[field.key] ?? ""} aria-invalid={Boolean(fieldErrors[field.key])} aria-describedby={fieldErrors[field.key] ? `${field.key}-error` : undefined} />
+            {fieldErrors[field.key] && <p id={`${field.key}-error`}>{fieldErrors[field.key]}</p>}
+          </div>
+        ))}
+        <fieldset>
+          <legend>Canal</legend>
+          <div class="options">
+            {DISCOVERY_CHANNELS.map((channel) => (
+              <label for={`channel-${channel}`}><input id={`channel-${channel}`} type="radio" name="discoveryChannel" value={channel} checked={values.discoveryChannel === channel} aria-invalid={Boolean(fieldErrors.discoveryChannel)} aria-describedby={fieldErrors.discoveryChannel ? "discoveryChannel-error" : undefined} />{DISCOVERY_CHANNEL_LABELS[channel]}</label>
+            ))}
+            <label for="channel-none"><input id="channel-none" type="radio" name="discoveryChannel" value="" checked={!values.discoveryChannel} aria-invalid={Boolean(fieldErrors.discoveryChannel)} aria-describedby={fieldErrors.discoveryChannel ? "discoveryChannel-error" : undefined} />Sin especificar</label>
+          </div>
+          {fieldErrors.discoveryChannel && <p id="discoveryChannel-error">{fieldErrors.discoveryChannel}</p>}
+        </fieldset>
+        <div class="field">
+          <label for="notes">Notas</label>
+          <textarea id="notes" name="notes" maxlength="2000" rows="3" aria-invalid={Boolean(fieldErrors.notes)} aria-describedby={fieldErrors.notes ? "notes-error" : undefined}>{values.notes ?? ""}</textarea>
+          {fieldErrors.notes && <p id="notes-error">{fieldErrors.notes}</p>}
+        </div>
+      </div>
+      <button type="submit" class="btn">Guardar cliente</button>
+    </form></Card>
+    <Card id="bikes-heading" title="Bicicletas">
+      {customerBikes.length ? (
+        <ul>
+          {customerBikes.map((bike) => <li><a href={`/taller/bicicletas/${bike.id}`}>{bike.brand} {bike.model}</a></li>)}
+        </ul>
+      ) : <p class="muted">Este cliente todavía no tiene bicicletas registradas.</p>}
+      <h3>Agregar bicicleta</h3>
+      {bikeError && <p role="alert">{bikeError}</p>}
+      <form method="post" action={PATH}>
+        <input type="hidden" name="accion" value="bicicleta" />
+        <div class="fields">
+          {bikeFields.map((field) => (
+            <div class="field">
+              <label for={`bike-${field.key}`}>{field.label}</label>
+              <input id={`bike-${field.key}`} name={field.key} required={field.required} maxlength={field.maxlength} value={bikeValues[field.key] ?? ""} aria-invalid={Boolean(bikeErrors[field.key])} aria-describedby={bikeErrors[field.key] ? `bike-${field.key}-error` : undefined} />
+              {bikeErrors[field.key] && <p id={`bike-${field.key}-error`}>{bikeErrors[field.key]}</p>}
+            </div>
+          ))}
+          <fieldset>
+            <legend>Tipo de bicicleta</legend>
+            <div class="options">
+              {BIKE_TYPES.map((type) => (
+                <label for={`bike-type-${type}`}><input id={`bike-type-${type}`} type="radio" name="bikeType" value={type} required checked={bikeValues.bikeType === type} aria-invalid={Boolean(bikeErrors.bikeType)} aria-describedby={bikeErrors.bikeType ? "bike-type-error" : undefined} />{BIKE_TYPE_LABELS[type]}</label>
+              ))}
+            </div>
+            {bikeErrors.bikeType && <p id="bike-type-error">{bikeErrors.bikeType}</p>}
+          </fieldset>
+          {bikeNumbers.map((field) => (
+            <div class="field">
+              <label for={`bike-${field.key}`}>{field.label}</label>
+              <input id={`bike-${field.key}`} name={field.key} type="number" min={field.min} max={field.max} step="1" value={bikeValues[field.key] ?? ""} aria-invalid={Boolean(bikeErrors[field.key])} aria-describedby={bikeErrors[field.key] ? `bike-${field.key}-error` : undefined} />
+              {bikeErrors[field.key] && <p id={`bike-${field.key}-error`}>{bikeErrors[field.key]}</p>}
+            </div>
+          ))}
+          <div class="field">
+            <label for="bike-notes">Notas</label>
+            <textarea id="bike-notes" name="notes" maxlength="1000" rows="3" aria-invalid={Boolean(bikeErrors.notes)} aria-describedby={bikeErrors.notes ? "bike-notes-error" : undefined}>{bikeValues.notes ?? ""}</textarea>
+            {bikeErrors.notes && <p id="bike-notes-error">{bikeErrors.notes}</p>}
+          </div>
+        </div>
+        <button type="submit" class="btn">Agregar bicicleta</button>
+      </form>
+    </Card>
+    <section aria-labelledby="history-heading">
+      <h2 id="history-heading">Historial</h2>
+      {history.length ? (
+        <ol>
+          {history.map((event) => (
+            <li>
+              <time datetime={event.at} class="tabular-nums">{DateTime.fromISO(event.at).setZone(TIMEZONE).toFormat("dd-MM-yyyy")}</time>
+              {event.orderId && event.orderNumber && <a href={`/taller/ordenes/${event.orderId}`}>{event.orderNumber}</a>}
+              <p>{event.title}</p>
+              {event.detail && <p>{event.detail}</p>}
+            </li>
+          ))}
+        </ol>
+      ) : <p class="muted">Sin historial todavía.</p>}
+    </section>
+  </div>
+</TallerLayout>
+
+<style is:global>
+  /*
+   * tests/integration/history.test.ts fija el markup literal de este bloque:
+   * corta el HTML por '<section aria-labelledby="history-heading">' y exige
+   * '<ol>' y class="tabular-nums". Por eso no usa <Card> ni clases propias y
+   * el aspecto de tarjeta se aplica por selector de atributo.
+   */
+  .taller section[aria-labelledby="history-heading"] {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    background: var(--surface);
+  }
+  .taller section[aria-labelledby="history-heading"] > h2 {
+    font-size: 1.05rem;
+  }
+  .taller section[aria-labelledby="history-heading"] ol {
+    display: grid;
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .taller section[aria-labelledby="history-heading"] time {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+  }
+</style>

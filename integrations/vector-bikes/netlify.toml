@@ -1,0 +1,9 @@
+[build]
+  command = "corepack pnpm@12.4.2 exec astro build --config astro.public-test.config.mjs"
+  publish = "dist-public-test"
+
+[build.environment]
+  NODE_VERSION = "24"
+
+# Adaptador @astrojs/netlify fijado en package.json y pnpm-lock.yaml.
+# Configurar DATABASE_URL y secretos en Netlify, nunca en este archivo.

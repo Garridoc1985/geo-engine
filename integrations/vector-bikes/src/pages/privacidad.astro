@@ -1,0 +1,99 @@
+---
+import Base from "../layouts/Base.astro";
+import { SITE } from "../lib/site.ts";
+
+export const prerender = true;
+---
+
+<Base
+  title="Aviso de privacidad — Vector Bikes"
+  description="Cómo Vector Bikes usa los datos de tu reserva y cómo ejercer tus derechos."
+  path="/privacidad"
+>
+  <section class="section">
+    <div class="wrap">
+      <article class="privacy">
+        <div class="sec-head">
+          <span class="label">Tus datos</span>
+          <h1>Aviso de privacidad</h1>
+        </div>
+
+        <h2>Responsable</h2>
+        <p>
+          {SITE.name}, {SITE.addressShort}. Contacto:
+          <a href={`mailto:${SITE.email}`}>{SITE.email}</a>.
+        </p>
+
+        <h2>Qué datos usamos</h2>
+        <p>
+          Nombre, teléfono, correo, bicicleta, descripción, comuna y dirección en retiros, fecha y
+          hora del consentimiento de reserva, y un identificador cifrado de tu IP para prevenir
+          abusos. Si autorizas el contacto por WhatsApp, también conservamos la fecha y hora de esa
+          autorización.
+        </p>
+
+        <h2>Para qué</h2>
+        <p>
+          Para gestionar tu reserva, contactarte sobre tu bicicleta, enviarte la confirmación y el
+          recordatorio por correo, y prevenir reservas falsas. Solo si marcas la casilla opcional de
+          WhatsApp, usaremos ese canal para coordinar aspectos operativos de esa reserva. No lo
+          usaremos para publicidad; puedes retirar esa autorización escribiéndonos al correo indicado
+          en este aviso.
+        </p>
+
+        <h2>Base legal</h2>
+        <p>
+          Usamos los datos necesarios para gestionar la reserva conforme a la Ley 19.628 y la Ley
+          21.719. El contacto operativo por WhatsApp se basa en tu autorización opcional e
+          independiente: no es necesaria para reservar y puedes retirarla cuando quieras.
+        </p>
+
+        <h2>Con quién se comparten</h2>
+        <ul>
+          <li>Replit — alojamiento y base de datos.</li>
+          <li>Resend — envío de correos.</li>
+          <li>Cloudflare Turnstile — verificación anti-abuso.</li>
+          <li>WhatsApp (Meta), solo si autorizas ese canal, para coordinar tu reserva.</li>
+        </ul>
+        <p>Tus datos nunca se venden ni se usan para publicidad.</p>
+
+        <h2>Cuánto tiempo</h2>
+        <p>
+          Mientras sean necesarios para gestionar tus reservas y el historial de servicio de tu
+          bicicleta, o hasta que pidas su eliminación.
+        </p>
+
+        <h2>Tus derechos</h2>
+        <p>
+          Puedes pedir acceso, rectificación, supresión, oposición y portabilidad escribiendo a
+          <a href={`mailto:${SITE.email}`}>{SITE.email}</a>.
+        </p>
+
+        <p class="privacy-updated">Última actualización: 15 de septiembre de 2026.</p>
+      </article>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .privacy {
+    max-width: 68ch;
+  }
+  .privacy h2 {
+    margin-top: 32px;
+    margin-bottom: 8px;
+  }
+  .privacy p,
+  .privacy ul {
+    color: var(--ink-2);
+  }
+  .privacy ul {
+    padding-left: 1.2em;
+    margin-bottom: 12px;
+  }
+  .privacy-updated {
+    margin-top: 32px;
+    font-size: 0.84rem;
+    color: var(--steel);
+  }
+</style>

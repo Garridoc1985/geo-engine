@@ -1,0 +1,86 @@
+---
+import Base from "./Base.astro";
+import "../styles/taller.css";
+import { can, ROLE_LABELS } from "../server/auth/permissions.ts";
+import type { Action, Role } from "../server/auth/permissions.ts";
+
+interface Props {
+  title: string;
+  description: string;
+  path: string;
+  user: { name: string; role: Role };
+}
+
+const { title, description, path, user } = Astro.props;
+type Link = { label: string; href: string; action: Action };
+const groups: { label: string; links: Link[] }[] = [
+  {
+    label: "Operación",
+    links: [
+      { label: "Inicio", href: "/taller", action: "orders.edit" },
+      { label: "Buscar", href: "/taller/buscar", action: "orders.edit" },
+      { label: "Órdenes", href: "/taller/ordenes", action: "orders.edit" },
+      { label: "Recepción", href: "/taller/recepcion/nueva", action: "reception.perform" },
+      { label: "Reservas", href: "/taller/reservas", action: "bookings.manage" },
+      { label: "Agenda", href: "/admin", action: "admin.panel" },
+    ],
+  },
+  {
+    label: "Gestión",
+    links: [
+      { label: "Clientes", href: "/taller/clientes", action: "customers.manage" },
+      { label: "Catálogo", href: "/taller/catalogo", action: "catalog.view" },
+      { label: "Usuarios", href: "/taller/usuarios", action: "users.manage" },
+      { label: "Bloqueos", href: "/admin/bloqueos", action: "admin.panel" },
+    ],
+  },
+];
+// El menú se arma en el servidor: un grupo sin enlaces permitidos no se muestra.
+const menu = groups
+  .map((group) => ({ ...group, links: group.links.filter((link) => can(user.role, link.action)) }))
+  .filter((group) => group.links.length > 0);
+---
+
+<Base title={title} description={description} path={path} chrome="none" noindex>
+  <div class="taller">
+    <aside class="taller-aside">
+      <div class="taller-id">
+        <p class="taller-brand">Vector Bikes · Taller</p>
+        <p class="taller-user">{user.name} · <span class="role">{ROLE_LABELS[user.role]}</span></p>
+        <button type="button" class="taller-toggle" popovertarget="taller-menu">Menú</button>
+      </div>
+      <div class="taller-panel" id="taller-menu" popover="auto">
+        <button
+          type="button"
+          class="taller-close"
+          popovertarget="taller-menu"
+          popovertargetaction="hide"
+        >
+          Cerrar
+        </button>
+        <nav aria-label="Taller">
+          {
+            menu.map((group) => (
+              <div class="taller-group">
+                <p class="label">{group.label}</p>
+                <ul>
+                  {group.links.map((link) => (
+                    <li>
+                      <a href={link.href} aria-current={path === link.href ? "page" : undefined}>
+                        {link.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))
+          }
+        </nav>
+        <form method="post" action="/admin/logout" class="taller-exit">
+          <button type="submit" class="btn ghost">Salir</button>
+        </form>
+      </div>
+    </aside>
+    <section class="taller-content"><slot /></section>
+  </div>
+</Base>

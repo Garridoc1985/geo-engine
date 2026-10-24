@@ -1,0 +1,69 @@
+---
+import { z } from "zod";
+import PhotoCapture from "../../../../components/taller/PhotoCapture.tsx";
+import Card from "../../../../components/taller/Card.astro";
+import OrderTabs from "../../../../components/taller/OrderTabs.astro";
+import PageHeader from "../../../../components/taller/PageHeader.astro";
+import TallerLayout from "../../../../layouts/TallerLayout.astro";
+import { ORDER_TABS } from "../../../../lib/taller-tabs.ts";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../../../server/auth/permissions.ts";
+import { getDb } from "../../../../server/db/client.ts";
+import { formatOrderNumber } from "../../../../server/taller/orders.ts";
+import { listOrderPhotos, stageAcceptsStatus } from "../../../../server/taller/photos.ts";
+import { STATUS_LABELS } from "../../../../server/taller/rules.ts";
+import type { OrderStatus } from "../../../../server/taller/rules.ts";
+import { canAccessOrder, orderDetail } from "../../../../server/taller/status.ts";
+
+export const prerender = false;
+const db = getDb();
+const user = await requireAdmin(db, Astro.cookies.get(SESSION_COOKIE)?.value, new Date());
+if (!user)
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location: loginRedirect(Astro.url.pathname + Astro.url.search),
+      "cache-control": "no-store",
+    },
+  });
+if (!can(user.role, "photos.upload")) return forbiddenResponse();
+Astro.response.headers.set("cache-control", "no-store");
+const id = z.uuid().safeParse(Astro.params.id);
+if (!id.success)
+  return new Response("Orden no encontrada.", {
+    status: 404,
+    headers: { "cache-control": "no-store" },
+  });
+const detail = await orderDetail(db, user, id.data);
+if (!detail.ok) {
+  if (detail.code === "forbidden") return forbiddenResponse();
+  return new Response("Orden no encontrada.", {
+    status: 404,
+    headers: { "cache-control": "no-store" },
+  });
+}
+const { order } = detail;
+const number = formatOrderNumber(order.number);
+const photos = await listOrderPhotos(db, user, order.id);
+const canUpload = can(user.role, "photos.upload") && canAccessOrder(user, order);
+const stages = [
+  { stage: "recepcion", title: "Recepción", label: "Foto de recepción" },
+  { stage: "reparacion", title: "Reparación", label: "Foto de reparación" },
+  { stage: "terminado", title: "Trabajo terminado", label: "Foto de trabajo terminado" },
+] as const;
+const tabs = ORDER_TABS.filter((tab) => can(user.role, tab.permission));
+---
+
+<TallerLayout title={`${number} · Galería — Vector Bikes`} description="Fotos de la orden agrupadas por etapa." path="/taller/ordenes" user={user}>
+  <div class="stack">
+    <PageHeader title={`${number} · Galería`} status={{ status: order.status, label: STATUS_LABELS[order.status as OrderStatus] }} />
+    <OrderTabs orderId={order.id} active="galeria" tabs={tabs} />
+    {stages.map(({ stage, title, label }) => <Card id={`${stage}-heading`} title={title}>
+      <div class="grid-photos">
+        {photos.filter((photo) => photo.stage === stage).map((photo, index) => <img src={photo.thumbUrl} alt={`${label} ${index + 1}`} />)}
+      </div>
+      {photos.filter((photo) => photo.stage === stage).length === 0 && <p class="muted">Sin fotos de esta etapa.</p>}
+      {stage !== "recepcion" && canUpload && stageAcceptsStatus(stage, order.status) && <PhotoCapture client:load uploadUrl={`/taller/ordenes/${order.id}/fotos`} stage={stage} label={label} />}
+    </Card>)}
+  </div>
+</TallerLayout>

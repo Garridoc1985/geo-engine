@@ -1,0 +1,52 @@
+---
+import Card from "../../../components/taller/Card.astro";
+import PageHeader from "../../../components/taller/PageHeader.astro";
+import TallerLayout from "../../../layouts/TallerLayout.astro";
+import { isAllowedOrigin } from "../../../server/api/handlers.ts";
+import { formatClp } from "../../../server/email/templates.ts";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../../server/auth/permissions.ts";
+import { getDb } from "../../../server/db/client.ts";
+import { formatOrderNumber } from "../../../server/taller/orders.ts";
+import { STATUS_LABELS } from "../../../server/taller/rules.ts";
+import type { OrderStatus } from "../../../server/taller/rules.ts";
+import { listOrders, orderScopeSchema } from "../../../server/taller/status.ts";
+
+export const prerender = false;
+const PATH = "/taller/ordenes";
+const db = getDb();
+const user = await requireAdmin(db, Astro.cookies.get(SESSION_COOKIE)?.value, new Date());
+if (!user)
+  return new Response(null, {
+    status: 303,
+    headers: { location: loginRedirect(PATH), "cache-control": "no-store" },
+  });
+if (Astro.request.method === "POST" && !isAllowedOrigin(Astro.request)) return forbiddenResponse();
+if (!can(user.role, "orders.edit")) return forbiddenResponse();
+Astro.response.headers.set("cache-control", "no-store");
+const scope = orderScopeSchema.parse({ scope: "open" });
+const orders = await listOrders(db, user, scope);
+---
+
+<TallerLayout title="Órdenes — Vector Bikes" description="Órdenes abiertas del taller." path={PATH} user={user}>
+  <div class="stack">
+    <PageHeader title="Órdenes abiertas" />
+    <Card><div class="scroll-x">
+      <table class="dense">
+        <caption>Órdenes abiertas de tu sucursal</caption>
+        <thead><tr><th scope="col">Orden</th><th scope="col">Estado</th><th scope="col">Cliente</th><th scope="col">Bicicleta</th><th scope="col">Entrega estimada</th><th scope="col">Total</th></tr></thead>
+        <tbody>
+          {orders.map(({ order, customerName, bikeBrand, bikeModel }) => (
+            <tr>
+              <th scope="row"><a href={`${PATH}/${order.id}`}>{formatOrderNumber(order.number)}</a></th>
+              <td><span class={`status status--${order.status}`}>{STATUS_LABELS[order.status as OrderStatus]}</span></td>
+              <td>{customerName}</td><td>{bikeBrand} {bikeModel}</td>
+              <td>{order.estimatedDeliveryDate ?? "Sin fecha"}</td><td class="mono">{formatClp(order.totalClp)}</td>
+            </tr>
+          ))}
+          {orders.length === 0 && <tr><td colspan="6" class="muted">No hay órdenes abiertas.</td></tr>}
+        </tbody>
+      </table>
+    </div></Card>
+  </div>
+</TallerLayout>

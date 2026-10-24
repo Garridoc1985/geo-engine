@@ -1,0 +1,315 @@
+---
+import { z } from "zod";
+import Card from "../../../../components/taller/Card.astro";
+import OrderTabs from "../../../../components/taller/OrderTabs.astro";
+import PageHeader from "../../../../components/taller/PageHeader.astro";
+import ReceptionSteps from "../../../../components/taller/ReceptionSteps.astro";
+import TallerLayout from "../../../../layouts/TallerLayout.astro";
+import { ORDER_TABS } from "../../../../lib/taller-tabs.ts";
+import { isAllowedOrigin } from "../../../../server/api/handlers.ts";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../../../server/auth/permissions.ts";
+import { addDays, localToday } from "../../../../server/booking/slots.ts";
+import { getDb } from "../../../../server/db/client.ts";
+import { formatClp } from "../../../../server/email/templates.ts";
+import { listCatalog } from "../../../../server/taller/catalog.ts";
+import {
+  confirmDeliveryDate,
+  deliveryDateSchema,
+  loadByDate,
+  suggestDeliveryDate,
+} from "../../../../server/taller/delivery-date.ts";
+import { addCatalogItem, catalogItemSchema, listItems } from "../../../../server/taller/items.ts";
+import {
+  accessoryFormSchema,
+  addAccessory,
+  checklistFormSchema,
+  listAccessories,
+  listIntakeChecks,
+  saveChecklist,
+  voidAccessory,
+} from "../../../../server/taller/intake.ts";
+import { formatOrderNumber, getOrderHeader } from "../../../../server/taller/orders.ts";
+import {
+  BIKE_TYPE_LABELS,
+  INTAKE_CHECK_KEYS,
+  INTAKE_CHECK_LABELS,
+  INTAKE_RESULTS,
+  INTAKE_RESULT_LABELS,
+  STATUS_LABELS,
+} from "../../../../server/taller/rules.ts";
+import type { BikeType, OrderStatus } from "../../../../server/taller/rules.ts";
+
+export const prerender = false;
+const db = getDb();
+const now = new Date();
+const user = await requireAdmin(db, Astro.cookies.get(SESSION_COOKIE)?.value, now);
+if (!user)
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location: loginRedirect(Astro.url.pathname + Astro.url.search),
+      "cache-control": "no-store",
+    },
+  });
+if (Astro.request.method === "POST" && !isAllowedOrigin(Astro.request)) return forbiddenResponse();
+if (!can(user.role, "reception.perform")) return forbiddenResponse();
+Astro.response.headers.set("cache-control", "no-store");
+const id = z.uuid().safeParse(Astro.params.id);
+const header = id.success ? await getOrderHeader(db, user, id.data) : null;
+if (!header)
+  return new Response("Orden no encontrada.", {
+    status: 404,
+    headers: { "cache-control": "no-store" },
+  });
+const { order, customer, bike } = header;
+if (
+  user.role === "mechanic" &&
+  order.assignedMechanicId !== user.id &&
+  (order.assignedMechanicId !== null ||
+    !["reservada", "recibida", "diagnostico"].includes(order.status))
+)
+  return forbiddenResponse();
+const number = formatOrderNumber(order.number);
+const actionSchema = z.discriminatedUnion("accion", [
+  checklistFormSchema.extend({ accion: z.literal("checklist") }),
+  accessoryFormSchema.extend({ accion: z.literal("accesorio") }),
+  z.object({ accion: z.literal("quitar"), accessoryId: z.uuid() }),
+  z.object({
+    accion: z.literal("servicio"),
+    serviceId: catalogItemSchema.shape.serviceId,
+    quantity: catalogItemSchema.shape.quantity,
+  }),
+  z.object({ accion: z.literal("fecha"), date: deliveryDateSchema }),
+]);
+let submitted: Record<string, string> = {};
+const fieldErrors: Record<string, string> = {};
+let error = "";
+const accessories = await listAccessories(db, user, order.id);
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  submitted = Object.fromEntries([...form].map(([key, value]) => [key, String(value)]));
+  if (submitted.accion === "servicio" && !can(user.role, "items.add_catalog"))
+    return forbiddenResponse();
+  const checks = Object.fromEntries(
+    INTAKE_CHECK_KEYS.filter((key) => submitted[key]).map((key) => [
+      key,
+      { result: submitted[key], note: submitted[`${key}_nota`] ?? "" },
+    ]),
+  );
+  const parsed = actionSchema.safeParse({ ...submitted, checks });
+  if (!parsed.success) {
+    Astro.response.status = 422;
+    error = "Revisa los datos de la recepción.";
+    for (const issue of parsed.error.issues) {
+      const key =
+        issue.path[0] === "checks"
+          ? `${String(issue.path[1])}${issue.path[2] === "note" ? "_nota" : ""}`
+          : String(issue.path[0]);
+      fieldErrors[key] ??= issue.message;
+    }
+  } else {
+    const input = parsed.data;
+    const result =
+      input.accion === "checklist"
+        ? await saveChecklist(db, user, order.id, input, now)
+        : input.accion === "accesorio"
+          ? await addAccessory(db, user, order.id, input, now)
+          : input.accion === "servicio"
+            ? await addCatalogItem(
+                db,
+                user,
+                order.id,
+                {
+                  serviceId: input.serviceId,
+                  quantity: input.quantity,
+                },
+                now,
+              )
+            : input.accion === "fecha"
+              ? await confirmDeliveryDate(db, user, order.id, input.date, now)
+              : accessories.some((row) => row.id === input.accessoryId)
+                ? await voidAccessory(db, user, input.accessoryId, now)
+                : ({ ok: false, code: "not_found" } as const);
+    if (result.ok)
+      return new Response(null, {
+        status: 303,
+        headers: {
+          location: `${Astro.url.pathname}?hecho=${input.accion}`,
+          "cache-control": "no-store",
+        },
+      });
+    if (result.code === "forbidden") return forbiddenResponse();
+    Astro.response.status =
+      result.code === "not_found" ? 404 : result.code === "invalid_state" ? 409 : 422;
+    error =
+      result.code === "invalid_state"
+        ? "El checklist solo se puede guardar en una orden reservada o recibida."
+        : result.code === "not_found"
+          ? "No se encontró la orden o el accesorio."
+          : result.code === "no_price"
+            ? "El servicio no tiene precio para este tipo de bicicleta."
+            : result.code === "invalid_date"
+              ? "La fecha de entrega debe ser hoy o posterior."
+              : "Revisa los datos de la recepción.";
+  }
+}
+const checks = await listIntakeChecks(db, user, order.id);
+const items = await listItems(db, user, order.id);
+const catalog = (await listCatalog(db, user)).filter((service) => service.isActive);
+const today = localToday(now);
+const suggestedDate = suggestDeliveryDate({
+  now,
+  orderMinutes: order.estimatedMinutes,
+  loadByDate: await loadByDate(db, user.branchId, addDays(today, 1), addDays(today, 60), order.id),
+});
+const missing = INTAKE_CHECK_KEYS.filter(
+  (key) => !checks.some((row) => row.itemKey === key),
+).length;
+const values: Record<string, string> = {
+  observaciones: order.observations ?? "",
+  servicio_solicitado: order.requestedService,
+  ...Object.fromEntries(
+    checks.flatMap((row) => [
+      [row.itemKey, row.result],
+      [`${row.itemKey}_nota`, row.note ?? ""],
+    ]),
+  ),
+  ...submitted,
+};
+const tabs = ORDER_TABS.filter((tab) => can(user.role, tab.permission));
+---
+
+<TallerLayout title={`${number} · Recepción — Vector Bikes`} description="Recepción de la bicicleta y datos de la orden." path="/taller/recepcion/nueva" user={user}>
+  <div class="stack">
+    <PageHeader title={number} status={{ status: order.status, label: STATUS_LABELS[order.status as OrderStatus] }} />
+    <OrderTabs orderId={order.id} active="recepcion" tabs={tabs} />
+    <ReceptionSteps current={2} />
+    <div class="fields">
+      <Card title="Cliente">
+        <p>{customer.name}</p>
+      </Card>
+      <Card title="Bicicleta">
+        <p>{bike.brand} {bike.model} · {BIKE_TYPE_LABELS[bike.bikeType as BikeType]}</p>
+      </Card>
+      <Card title="Servicio solicitado">
+        <p>{order.requestedService}</p>
+      </Card>
+    </div>
+    {error && <p role="alert">{error}</p>}
+    {Astro.url.searchParams.get("hecho") === "checklist" && <p role="status">Checklist guardado.</p>}
+    {Astro.url.searchParams.get("hecho") === "accesorio" && <p role="status">Accesorio agregado.</p>}
+    {Astro.url.searchParams.get("hecho") === "quitar" && <p role="status">Accesorio quitado.</p>}
+    {Astro.url.searchParams.get("hecho") === "servicio" && <p role="status">Servicio agregado.</p>}
+    <Card id="checklist-heading" title="Checklist">
+      <p role="status">{missing === 0 ? "Checklist completo" : `Faltan ${missing} puntos`}</p>
+      <form method="post" action={Astro.url.pathname}>
+        <input type="hidden" name="accion" value="checklist" />
+        <div class="fields">
+          {INTAKE_CHECK_KEYS.map((key) => (
+            <fieldset>
+              <legend>{INTAKE_CHECK_LABELS[key]}</legend>
+              <div class="options">
+                {INTAKE_RESULTS.map((result) => (
+                  <label><input type="radio" name={key} value={result} checked={values[key] === result} aria-invalid={Boolean(fieldErrors[key])} aria-describedby={fieldErrors[key] ? `${key}-error` : undefined} />{INTAKE_RESULT_LABELS[result]}</label>
+                ))}
+              </div>
+              {fieldErrors[key] && <p id={`${key}-error`}>{fieldErrors[key]}</p>}
+              <div class="field">
+                <label for={`${key}-note`}>Nota de {INTAKE_CHECK_LABELS[key]} (opcional)</label>
+                <input id={`${key}-note`} name={`${key}_nota`} type="text" maxlength="300" value={values[`${key}_nota`] ?? ""} aria-invalid={Boolean(fieldErrors[`${key}_nota`])} aria-describedby={fieldErrors[`${key}_nota`] ? `${key}-note-error` : undefined} />
+                {fieldErrors[`${key}_nota`] && <p id={`${key}-note-error`}>{fieldErrors[`${key}_nota`]}</p>}
+              </div>
+            </fieldset>
+          ))}
+          <div class="field">
+            <label for="requested-service">Servicio solicitado</label>
+            <textarea id="requested-service" name="servicio_solicitado" required minlength="3" maxlength="500" rows="3" aria-invalid={Boolean(fieldErrors.servicio_solicitado)} aria-describedby={fieldErrors.servicio_solicitado ? "requested-service-error" : undefined}>{values.servicio_solicitado}</textarea>
+            {fieldErrors.servicio_solicitado && <p id="requested-service-error">{fieldErrors.servicio_solicitado}</p>}
+          </div>
+          <div class="field">
+            <label for="observations">Observaciones</label>
+            <textarea id="observations" name="observaciones" maxlength="2000" rows="3" aria-invalid={Boolean(fieldErrors.observaciones)} aria-describedby={fieldErrors.observaciones ? "observations-error" : undefined}>{values.observaciones}</textarea>
+            {fieldErrors.observaciones && <p id="observations-error">{fieldErrors.observaciones}</p>}
+          </div>
+        </div>
+        <button type="submit" class="btn">Guardar checklist</button>
+      </form>
+    </Card>
+    <Card id="accessories-heading" title="Accesorios">
+      {accessories.length === 0 ? <p class="muted">No hay accesorios registrados.</p> : (
+        <ul class="log">
+          {accessories.map((accessory) => (
+            <li>
+              <p>{accessory.description}</p>
+              <form method="post" action={Astro.url.pathname}>
+                <input type="hidden" name="accion" value="quitar" />
+                <input type="hidden" name="accessoryId" value={accessory.id} />
+                <button type="submit" class="btn ghost" aria-label={`Quitar ${accessory.description}`}>Quitar</button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form method="post" action={Astro.url.pathname}>
+        <input type="hidden" name="accion" value="accesorio" />
+        <div class="field">
+          <label for="accessory">Accesorio</label>
+          <input id="accessory" name="description" type="text" required maxlength="200" value={submitted.description ?? ""} aria-invalid={Boolean(fieldErrors.description)} aria-describedby={fieldErrors.description ? "accessory-error" : undefined} />
+          {fieldErrors.description && <p id="accessory-error">{fieldErrors.description}</p>}
+        </div>
+        <button type="submit" class="btn">Agregar accesorio</button>
+      </form>
+    </Card>
+    <Card id="services-heading" title="Servicios">
+      <form method="post" action={Astro.url.pathname}>
+        <input type="hidden" name="accion" value="servicio" />
+        <div class="field">
+          <label for="catalog-service">Servicio del catálogo</label>
+          <select id="catalog-service" name="serviceId" required aria-invalid={Boolean(fieldErrors.serviceId)} aria-describedby={fieldErrors.serviceId ? "service-error" : undefined}>
+            <option value="">Selecciona un servicio</option>
+            {catalog.map((service) => (
+              <option value={service.id} selected={submitted.serviceId === service.id} disabled={service.prices[bike.bikeType as BikeType] === undefined}>
+                {service.name} · {service.prices[bike.bikeType as BikeType] === undefined ? "Sin precio para esta bicicleta" : formatClp(service.prices[bike.bikeType as BikeType]!)}
+              </option>
+            ))}
+          </select>
+          {fieldErrors.serviceId && <p id="service-error">{fieldErrors.serviceId}</p>}
+        </div>
+        <button type="submit" class="btn">Agregar servicio</button>
+      </form>
+      {items.length === 0 ? <p class="muted">No hay servicios registrados.</p> : (
+        <div class="scroll-x"><table class="dense">
+          <thead><tr><th scope="col">Servicio</th><th scope="col">Cantidad</th><th scope="col">Precio unitario</th><th scope="col">Subtotal</th></tr></thead>
+          <tbody>{items.map((item) => (
+            <tr><td>{item.description}</td><td>{item.quantity}</td><td class="mono">{formatClp(item.unitPriceClp)}</td><td class="mono">{formatClp(item.quantity * item.unitPriceClp)}</td></tr>
+          ))}</tbody>
+        </table></div>
+      )}
+      <p>Total: <span class="mono">{formatClp(order.totalClp)}</span></p>
+    </Card>
+    <Card id="delivery-heading" title="Fecha de entrega">
+      <p class="muted">Sugerida: {suggestedDate}</p>
+      {order.deliveryDateConfirmedAt && <p role="status">Fecha confirmada: {order.estimatedDeliveryDate}</p>}
+      <form method="post" action={Astro.url.pathname}>
+        <input type="hidden" name="accion" value="fecha" />
+        <div class="field">
+          <label for="delivery-date">Fecha de entrega</label>
+          <input id="delivery-date" name="date" type="date" required min={today} value={submitted.date ?? order.estimatedDeliveryDate ?? suggestedDate} aria-invalid={Boolean(fieldErrors.date)} aria-describedby={fieldErrors.date ? "delivery-date-error" : undefined} />
+          {fieldErrors.date && <p id="delivery-date-error">{fieldErrors.date}</p>}
+        </div>
+        <button type="submit" class="btn">Confirmar fecha</button>
+      </form>
+    </Card>
+    <section id="reception-sections" aria-label="Recepción" class="card stack">
+      <h2>Recepción</h2>
+      {order.status === "recibida" ? <p role="status">Recepción finalizada</p> : <p class="muted">Orden creada. La recepción está pendiente.</p>}
+      <p>Checklist: {missing === 0 ? "Completo" : "Pendiente"}</p>
+      <p>Fecha de entrega: {order.deliveryDateConfirmedAt ? "Confirmada" : "Pendiente"}</p>
+      <p>Servicios: {items.length} {items.length === 1 ? "agregado" : "agregados"}</p>
+      {missing > 0 && <p>Marca los 7 puntos y pulsa «Guardar checklist» antes de continuar.</p>}
+      <a class="btn" href={`/taller/ordenes/${order.id}/cierre`}>Continuar a fotos y firma</a>
+    </section>
+  </div>
+</TallerLayout>

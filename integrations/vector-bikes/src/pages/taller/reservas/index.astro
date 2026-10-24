@@ -1,0 +1,94 @@
+---
+import { DateTime } from "luxon";
+import { z } from "zod";
+import Card from "../../../components/taller/Card.astro";
+import PageHeader from "../../../components/taller/PageHeader.astro";
+import TallerLayout from "../../../layouts/TallerLayout.astro";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../../server/auth/permissions.ts";
+import { TIMEZONE } from "../../../server/booking/rules.ts";
+import { localToday } from "../../../server/booking/slots.ts";
+import { getDb } from "../../../server/db/client.ts";
+import { listUpcomingBookings } from "../../../server/taller/manual-booking.ts";
+import { formatOrderNumber } from "../../../server/taller/orders.ts";
+
+export const prerender = false;
+const PATH = "/taller/reservas";
+const db = getDb();
+const now = new Date();
+const user = await requireAdmin(db, Astro.cookies.get(SESSION_COOKIE)?.value, now);
+if (!user)
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location: loginRedirect(Astro.url.pathname + Astro.url.search),
+      "cache-control": "no-store",
+    },
+  });
+if (!can(user.role, "bookings.manage")) return forbiddenResponse();
+Astro.response.headers.set("cache-control", "no-store");
+const upcoming = await listUpcomingBookings(db, localToday(now));
+const rescheduled = z
+  .object({
+    date: z.iso.date(),
+    time: z.string().regex(/^(?:[01]\d|2[0-3]):(?:00|30)$/),
+  })
+  .safeParse({
+    date: Astro.url.searchParams.get("fecha"),
+    time: Astro.url.searchParams.get("hora"),
+  });
+const rescheduledMessage = rescheduled.success
+  ? `Reserva reprogramada para el ${DateTime.fromISO(rescheduled.data.date, { zone: TIMEZONE }).setLocale("es").toFormat("cccc d 'de' LLLL")} a las ${rescheduled.data.time}.`
+  : "Reserva reprogramada.";
+const sourceLabels: Record<string, string> = {
+  web: "Sitio",
+  telefono: "Teléfono",
+  whatsapp: "WhatsApp",
+  presencial: "Presencial",
+};
+---
+
+<TallerLayout title="Reservas — Vector Bikes" description="Reservas próximas del taller." path={PATH} user={user}>
+  <div class="stack">
+    <PageHeader title="Reservas">
+      <a slot="actions" class="btn" href={`${PATH}/nueva`}>Nueva reserva</a>
+    </PageHeader>
+    {Astro.url.searchParams.get("hecho") === "creada" && <p role="status">Reserva creada.</p>}
+    {Astro.url.searchParams.get("hecho") === "reprogramada" && <p role="status">{rescheduledMessage}</p>}
+    <Card><div class="scroll-x">
+      <table class="dense">
+        <caption>Reservas próximas · 14 días</caption>
+        <thead><tr><th scope="col">Día</th><th scope="col">Hora</th><th scope="col">Nombre</th><th scope="col">Teléfono</th><th scope="col">Bicicleta</th><th scope="col">Origen</th><th scope="col">Recepción</th></tr></thead>
+        <tbody>
+          {upcoming.map((booking) => (
+            <tr>
+              <td>{DateTime.fromISO(booking.serviceDate).toFormat("dd/MM/yyyy")}</td>
+              <td>{DateTime.fromJSDate(booking.startsAt).setZone(TIMEZONE).toFormat("HH:mm")}</td>
+              <th scope="row">{booking.customerName}</th>
+              <td>{booking.phoneE164}</td><td>{booking.bike}</td><td>{sourceLabels[booking.source]}</td>
+              <td>
+                {booking.orderId && booking.orderNumber !== null ? (
+                  <a class="btn ghost" href={`/taller/ordenes/${booking.orderId}/recepcion`}>{formatOrderNumber(booking.orderNumber)}</a>
+                ) : (
+                  <div class="booking-actions">
+                    <a class="btn ghost" href={`/taller/recepcion/nueva?reserva=${booking.id}`}>Recibir</a>
+                    <a class="btn ghost" href={`/taller/reservas/${booking.id}/reprogramar`}>Reprogramar</a>
+                  </div>
+                )}
+              </td>
+            </tr>
+          ))}
+          {upcoming.length === 0 && <tr><td colspan="7" class="muted">No hay reservas próximas.</td></tr>}
+        </tbody>
+      </table>
+    </div></Card>
+  </div>
+</TallerLayout>
+
+<style is:global>
+  .taller .booking-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+</style>

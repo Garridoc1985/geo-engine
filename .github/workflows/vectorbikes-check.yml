@@ -1,0 +1,28 @@
+name: Validar sitio público de Vector Bikes
+on:
+  pull_request:
+    paths:
+      - 'integrations/vector-bikes/**'
+      - '.github/workflows/vectorbikes-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-site:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integrations/vector-bikes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Instalar dependencias fijadas
+        run: corepack pnpm@12.4.2 install --frozen-lockfile
+      - name: Revisar código y tipos
+        run: corepack pnpm@12.4.2 check
+      - name: Probar stream con proveedor simulado
+        run: corepack pnpm@12.4.2 exec vitest run tests/unit/assistant.test.ts --pool=threads --maxWorkers=1
+      - name: Compilar solo páginas públicas
+        run: corepack pnpm@12.4.2 exec astro build --config astro.public-test.config.mjs

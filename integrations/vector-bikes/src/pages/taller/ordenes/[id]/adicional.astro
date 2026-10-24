@@ -1,0 +1,163 @@
+---
+import { z } from "zod";
+import Card from "../../../../components/taller/Card.astro";
+import OrderTabs from "../../../../components/taller/OrderTabs.astro";
+import PageHeader from "../../../../components/taller/PageHeader.astro";
+import TallerLayout from "../../../../layouts/TallerLayout.astro";
+import { ORDER_TABS } from "../../../../lib/taller-tabs.ts";
+import { getSiteEnv } from "../../../../lib/env.ts";
+import { isAllowedOrigin } from "../../../../server/api/handlers.ts";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../../../server/auth/permissions.ts";
+import { getDb } from "../../../../server/db/client.ts";
+import { formatClp } from "../../../../server/email/templates.ts";
+import {
+  approvalFormSchema,
+  approvalLink,
+  createApproval,
+  listApprovals,
+  regenerateApprovalLink,
+  whatsappShareLink,
+} from "../../../../server/taller/approvals.ts";
+import { formatOrderNumber } from "../../../../server/taller/orders.ts";
+import { STATUS_LABELS } from "../../../../server/taller/rules.ts";
+import type { OrderStatus } from "../../../../server/taller/rules.ts";
+import { orderDetail } from "../../../../server/taller/status.ts";
+
+export const prerender = false;
+const headers = { "cache-control": "no-store", "referrer-policy": "no-referrer" };
+function forbidden() {
+  const response = forbiddenResponse();
+  response.headers.set("referrer-policy", "no-referrer");
+  return response;
+}
+const db = getDb();
+const now = new Date();
+const user = await requireAdmin(db, Astro.cookies.get(SESSION_COOKIE)?.value, now);
+if (!user)
+  return new Response(null, {
+    status: 303,
+    headers: { ...headers, location: loginRedirect(Astro.url.pathname) },
+  });
+if (Astro.request.method === "POST" && !isAllowedOrigin(Astro.request)) return forbidden();
+if (!can(user.role, "approvals.create")) return forbidden();
+for (const [name, value] of Object.entries(headers)) Astro.response.headers.set(name, value);
+const id = z.uuid().safeParse(Astro.params.id);
+if (!id.success) return new Response("Orden no encontrada.", { status: 404, headers });
+const detail = await orderDetail(db, user, id.data);
+if (!detail.ok)
+  return detail.code === "forbidden"
+    ? forbidden()
+    : new Response("Orden no encontrada.", { status: 404, headers });
+const PATH = `/taller/ordenes/${id.data}/adicional`;
+const actionSchema = z.discriminatedUnion("action", [
+  approvalFormSchema.extend({ action: z.literal("create") }),
+  z.object({ action: z.literal("regenerate"), approvalId: z.uuid() }),
+]);
+const fields = [
+  {
+    key: "description",
+    label: "Problema",
+    error: "El problema debe tener entre 5 y 500 caracteres.",
+  },
+  {
+    key: "recommendation",
+    label: "Recomendación",
+    error: "La recomendación debe tener entre 5 y 500 caracteres.",
+  },
+  { key: "priceClp", label: "Precio", error: "Ingresa un precio entero entre $1 y $10.000.000." },
+] as const;
+let approvals = await listApprovals(db, user, id.data);
+let error = "";
+let link = "";
+let whatsapp = "";
+let values: Record<string, string> = {};
+const fieldErrors: Record<string, string> = {};
+if (Astro.request.method === "POST") {
+  if (!can(user.role, "approvals.create")) return forbidden();
+  const form = await Astro.request.formData();
+  values = Object.fromEntries(fields.map(({ key }) => [key, String(form.get(key) ?? "")]));
+  const parsed = actionSchema.safeParse({
+    ...values,
+    action: form.get("action"),
+    approvalId: form.get("approvalId"),
+  });
+  let result: { ok: boolean; code?: string; token?: string } = {
+    ok: false,
+    code: "validation_error",
+  };
+  if (parsed.success) {
+    const input = parsed.data;
+    if (input.action === "create") result = await createApproval(db, user, id.data, input, now);
+    else if (approvals.some((approval) => approval.id === input.approvalId))
+      result = await regenerateApprovalLink(db, user, input.approvalId, now);
+    else result = { ok: false, code: "not_found" };
+  } else {
+    for (const issue of parsed.error.issues) {
+      const field = fields.find(({ key }) => key === issue.path[0]);
+      if (field) fieldErrors[field.key] = field.error;
+    }
+  }
+  if (result.ok && result.token) {
+    link = approvalLink(getSiteEnv().PUBLIC_SITE_URL, result.token);
+    const firstName = detail.customer.name.trim().split(/\s+/)[0];
+    const message = `Hola ${firstName}, en Vector Bikes revisamos tu bicicleta y encontramos algo. Revisa y responde aquí: ${link}`;
+    if (detail.customer.phoneE164) whatsapp = whatsappShareLink(detail.customer.phoneE164, message);
+    values = {};
+    approvals = await listApprovals(db, user, id.data);
+  } else {
+    if (result.code === "forbidden") return forbidden();
+    Astro.response.status =
+      result.code === "not_found" ? 404 : result.code === "validation_error" ? 422 : 409;
+    error =
+      result.code === "not_found"
+        ? "Propuesta no encontrada o ya respondida."
+        : result.code === "validation_error"
+          ? "Revisa los datos del formulario."
+          : "El estado de la orden no permite proponer un adicional.";
+  }
+}
+const number = formatOrderNumber(detail.order.number);
+const decisionLabels = { aprobado: "Aprobado", rechazado: "Rechazado" };
+const { order } = detail;
+const tabs = ORDER_TABS.filter((tab) => can(user.role, tab.permission));
+---
+
+<TallerLayout title={`${number} · Adicional — Vector Bikes`} description="Propuestas de trabajo adicional." path="/taller/ordenes" user={user}>
+  <div class="stack">
+    <PageHeader title={`${number} · Adicional`} status={{ status: order.status, label: STATUS_LABELS[order.status as OrderStatus] }} />
+    <OrderTabs orderId={order.id} active="adicional" tabs={tabs} />
+    {error && <p role="alert">{error}</p>}
+    {link && <Card id="share-title" title="Enlace para el cliente">
+      <p role="status">Copia este enlace ahora; no se vuelve a mostrar</p>
+      <div class="field"><label for="approval-link">Enlace de aprobación</label><textarea id="approval-link" readonly rows="3">{link}</textarea></div>
+      {whatsapp && <a class="btn" href={whatsapp} rel="noreferrer">Enviar por WhatsApp</a>}
+    </Card>}
+    <Card title="Propuestas">
+      {approvals.length === 0 ? <p class="muted">Aún no hay propuestas de adicional.</p> : <div class="scroll-x"><table class="dense">
+        <caption>Trabajos adicionales propuestos</caption>
+        <thead><tr><th scope="col">Problema</th><th scope="col">Precio</th><th scope="col">Estado</th><th scope="col">Fecha</th><th scope="col">Enlace</th></tr></thead>
+        <tbody>{approvals.map((approval) => <tr>
+          <td>{approval.description}</td><td class="mono">{formatClp(approval.priceClp)}</td>
+          <td>{approval.decision ? decisionLabels[approval.decision] : "Pendiente"}</td>
+          <td>{approval.createdAt.toLocaleString("es-CL", { timeZone: "America/Santiago" })}</td>
+          <td>{approval.decidedAt === null && <form method="post" action={PATH}>
+            <input type="hidden" name="action" value="regenerate" /><input type="hidden" name="approvalId" value={approval.id} />
+            <button class="btn ghost" type="submit">Generar nuevo enlace</button>
+          </form>}</td>
+        </tr>)}</tbody>
+      </table></div>}
+    </Card>
+    <Card><form method="post" action={PATH}>
+      <input type="hidden" name="action" value="create" />
+      <fieldset><legend>Proponer adicional</legend><div class="fields">
+        {fields.map(({ key, label }) => <div class="field">
+          <label for={key}>{label}</label>
+          {key === "priceClp" ? <input id={key} name={key} type="number" inputmode="numeric" min="1" max="10000000" step="1" required value={values[key] ?? ""} aria-invalid={Boolean(fieldErrors[key])} aria-describedby={fieldErrors[key] ? `${key}-error` : undefined} />
+            : <textarea id={key} name={key} rows="2" required minlength="5" maxlength="500" aria-invalid={Boolean(fieldErrors[key])} aria-describedby={fieldErrors[key] ? `${key}-error` : undefined}>{values[key] ?? ""}</textarea>}
+          {fieldErrors[key] && <p id={`${key}-error`}>{fieldErrors[key]}</p>}
+        </div>)}
+      </div><button class="btn" type="submit">Crear propuesta</button></fieldset>
+    </form></Card>
+  </div>
+</TallerLayout>

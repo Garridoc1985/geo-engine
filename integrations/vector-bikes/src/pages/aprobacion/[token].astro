@@ -1,0 +1,91 @@
+---
+import { z } from "zod";
+import Base from "../../layouts/Base.astro";
+import { log } from "../../lib/log.ts";
+import { clientIp } from "../../server/api/client-ip.ts";
+import { checkRateLimit, hashIp, originForLog, recordAttempt } from "../../server/api/handlers.ts";
+import { getDb } from "../../server/db/client.ts";
+import { formatClp } from "../../server/email/templates.ts";
+import { decideApproval, viewApproval } from "../../server/taller/approvals.ts";
+import { shareTokenSchema } from "../../server/taller/share-tokens.ts";
+
+export const prerender = false;
+
+Astro.response.headers.set("cache-control", "no-store");
+Astro.response.headers.set("referrer-policy", "no-referrer");
+
+const token = shareTokenSchema.safeParse(Astro.params.token);
+const decisionSchema = z.enum(["aprobar", "rechazar"]);
+let approval:
+  | Extract<Awaited<ReturnType<typeof viewApproval>>, { view: "pending" }>["approval"]
+  | null = null;
+let message = "Enlace no válido";
+Astro.response.status = 404;
+
+if (Astro.request.method === "POST") {
+  log.info("approval.origin", { origin: originForLog(Astro.request) });
+  const db = getDb();
+  const now = new Date();
+  const ip = clientIp(Astro.request, null) ?? Astro.clientAddress;
+  const ctx = { db, now, ip };
+  const limited = await checkRateLimit(ctx);
+  if (limited) {
+    Astro.response.status = 429;
+    Astro.response.headers.set("Retry-After", limited.headers.get("Retry-After") ?? "600");
+    message = "Demasiados intentos. Vuelve a intentar en 10 minutos.";
+  } else {
+    await recordAttempt(ctx);
+    const form = await Astro.request.formData();
+    const parsed = decisionSchema.safeParse(form.get("decision"));
+    if (token.success && parsed.success) {
+      const decision = parsed.data === "aprobar" ? "aprobado" : "rechazado";
+      const result = await decideApproval(db, token.data, decision, hashIp(ip), now);
+      if (result.ok) {
+        Astro.response.status = 200;
+        message = `Gracias, registramos tu respuesta: ${decision === "aprobado" ? "Aprobado" : "Rechazado"}`;
+      }
+    }
+  }
+} else if (token.success) {
+  const result = await viewApproval(getDb(), token.data);
+  if (result.view === "pending") {
+    Astro.response.status = 200;
+    approval = result.approval;
+  }
+}
+---
+
+<Base
+  title="Aprobar adicional — Vector Bikes"
+  description="Responde a la propuesta de trabajo adicional de Vector Bikes."
+  path="/aprobacion"
+  chrome="none"
+  noindex
+>
+  <section class="section">
+    <div class="wrap" style="max-width:40rem">
+      {approval ? (
+        <>
+          <div class="sec-head">
+            <span class="label">Trabajo adicional</span>
+            <h1>Hola {approval.firstName}</h1>
+            <p>Revisa esta propuesta para tu {approval.bike}.</p>
+          </div>
+          <aside class="ticket">
+            <dl class="ticket-body">
+              <div class="row"><dt>Problema</dt><dd>{approval.description}</dd></div>
+              <div class="row"><dt>Recomendación</dt><dd>{approval.recommendation}</dd></div>
+            </dl>
+            <div class="ticket-total"><span class="label">Precio</span><strong>{formatClp(approval.priceClp)}</strong></div>
+            <div class="ticket-foot">
+              <form method="post">
+                <button type="submit" name="decision" value="aprobar" class="btn">Aprobar</button>
+                <button type="submit" name="decision" value="rechazar" class="btn">Rechazar</button>
+              </form>
+            </div>
+          </aside>
+        </>
+      ) : <div class="sec-head"><h1>{message}</h1></div>}
+    </div>
+  </section>
+</Base>

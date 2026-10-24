@@ -1,0 +1,149 @@
+---
+import Card from "../../components/taller/Card.astro";
+import PageHeader from "../../components/taller/PageHeader.astro";
+import TallerLayout from "../../layouts/TallerLayout.astro";
+import {
+  blockRange,
+  createBlock,
+  deleteBlock,
+  listUpcomingBlocks,
+} from "../../server/admin/agenda.ts";
+import { isAllowedOrigin } from "../../server/api/handlers.ts";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../server/auth/permissions.ts";
+import { localToday } from "../../server/booking/slots.ts";
+import { getDb } from "../../server/db/client.ts";
+
+export const prerender = false;
+
+const admin = await requireAdmin(getDb(), Astro.cookies.get(SESSION_COOKIE)?.value, new Date());
+if (!admin) return Astro.redirect(loginRedirect(Astro.url.pathname + Astro.url.search), 303);
+if (!can(admin.role, "admin.panel")) return forbiddenResponse();
+
+Astro.response.headers.set("cache-control", "no-store");
+
+const text = (value: FormDataEntryValue | null) => (typeof value === "string" ? value : "");
+const optional = (value: FormDataEntryValue | null) => text(value).trim() || null;
+
+let forbidden = false;
+let errors: Record<string, string> = {};
+let values = { fecha: "", desde: "", hasta: "", motivo: "" };
+
+if (Astro.request.method === "POST") {
+  if (!isAllowedOrigin(Astro.request)) {
+    forbidden = true;
+    Astro.response.status = 403;
+  } else {
+    const form = await Astro.request.formData();
+    if (form.get("accion") === "eliminar") {
+      await deleteBlock(getDb(), text(form.get("id")));
+      return Astro.redirect("/admin/bloqueos", 303);
+    }
+    values = {
+      fecha: text(form.get("fecha")),
+      desde: text(form.get("desde")),
+      hasta: text(form.get("hasta")),
+      motivo: text(form.get("motivo")),
+    };
+    const result = await createBlock(getDb(), {
+      serviceDate: values.fecha,
+      startTime: optional(form.get("desde")),
+      endTime: optional(form.get("hasta")),
+      reason: values.motivo,
+    });
+    if (result.ok) {
+      return Astro.redirect("/admin/bloqueos", 303);
+    }
+    errors = result.errors;
+    Astro.response.status = 422;
+  }
+}
+
+const blocks = await listUpcomingBlocks(getDb(), localToday(new Date()));
+
+const FIELDS = [
+  { name: "fecha", key: "serviceDate", label: "Fecha", type: "date", required: true },
+  { name: "desde", key: "startTime", label: "Desde (opcional)", type: "time", required: false },
+  { name: "hasta", key: "endTime", label: "Hasta (opcional)", type: "time", required: false },
+  { name: "motivo", key: "reason", label: "Motivo", type: "text", required: true },
+] as const;
+---
+
+<TallerLayout
+  title="Bloqueos — Vector Bikes"
+  description="Bloqueos de agenda del taller."
+  path="/admin/bloqueos"
+  user={admin}
+>
+  <div class="stack">
+    <PageHeader title="Bloqueos" subtitle="Panel del taller" />
+    {
+      forbidden && (
+        <p role="alert" style="margin-bottom:20px;font-weight:600">
+          No pudimos confirmar la solicitud. Recarga la página e intenta de nuevo.
+        </p>
+      )
+    }
+    <Card>
+      <p>Deja desde y hasta vacías para bloquear el día completo.</p>
+      <form method="post" action="/admin/bloqueos" style="margin-bottom:36px">
+        <input type="hidden" name="accion" value="crear" />
+        <div class="fields">
+          {
+            FIELDS.map((field) => {
+              const message = errors[field.key];
+              return (
+                <div class:list={["field", { bad: Boolean(message) }]}>
+                  <label for={field.name}>{field.label}</label>
+                  <input
+                    type={field.type}
+                    id={field.name}
+                    name={field.name}
+                    required={field.required}
+                    value={values[field.name]}
+                    aria-invalid={message ? "true" : undefined}
+                    aria-describedby={message ? `${field.name}-err` : undefined}
+                  />
+                  {message && (
+                    <span class="err" id={`${field.name}-err`}>
+                      {message}
+                    </span>
+                  )}
+                </div>
+              );
+            })
+          }
+          <div class="full">
+            <button type="submit" class="btn">
+              Crear bloqueo
+            </button>
+          </div>
+        </div>
+      </form>
+    </Card>
+    <Card title="Próximos bloqueos" id="upcoming-blocks">
+      {
+        blocks.length === 0 ? (
+          <p>No hay bloqueos próximos.</p>
+        ) : (
+          <ul style="list-style:none;padding:0;margin-top:18px;border-top:1px solid var(--ink)">
+            {blocks.map((block) => (
+              <li style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:11px 0;border-bottom:1px solid var(--rule)">
+                <span class="mono">{block.serviceDate}</span>
+                <span class="mono">{blockRange(block)}</span>
+                <span style="flex:1">{block.reason}</span>
+                <form method="post" action="/admin/bloqueos">
+                  <input type="hidden" name="accion" value="eliminar" />
+                  <input type="hidden" name="id" value={block.id} />
+                  <button type="submit" class="btn ghost">
+                    Eliminar
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </Card>
+  </div>
+</TallerLayout>

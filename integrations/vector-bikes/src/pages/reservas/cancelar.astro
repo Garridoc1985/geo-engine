@@ -1,0 +1,121 @@
+---
+import Base from "../../layouts/Base.astro";
+import { log } from "../../lib/log.ts";
+import { SITE } from "../../lib/site.ts";
+import { originForLog } from "../../server/api/handlers.ts";
+import {
+  type CancellationView,
+  performCancellation,
+  viewCancellation,
+} from "../../server/booking/cancel-flow.ts";
+import { getDb } from "../../server/db/client.ts";
+import { formatClp } from "../../server/email/templates.ts";
+
+export const prerender = false;
+
+Astro.response.headers.set("cache-control", "no-store");
+Astro.response.headers.set("referrer-policy", "no-referrer");
+
+const now = new Date();
+let token: string | null = null;
+let result: CancellationView;
+
+if (Astro.request.method === "POST") {
+  // Sin chequeo de Origin: el token del correo es la defensa (ver .claude/rules/server-api.md).
+  // El origen queda registrado solo para saber qué mandan los navegadores y visores reales.
+  log.info("cancel.origin", { origin: originForLog(Astro.request) });
+  const form = await Astro.request.formData();
+  const raw = form.get("token");
+  token = typeof raw === "string" ? raw : null;
+  result = await performCancellation(getDb(), token, now);
+} else {
+  token = Astro.url.searchParams.get("token");
+  result = await viewCancellation(getDb(), token, now);
+}
+
+if (result.view === "invalid") {
+  Astro.response.status = 404;
+}
+
+const booking = "booking" in result ? result.booking : null;
+
+const HEADINGS = {
+  confirm: "¿Cancelar tu reserva?",
+  done: "Reserva cancelada",
+  cancelled: "Esta reserva ya estaba cancelada",
+  started: "Esta reserva ya no se puede cancelar",
+  invalid: "Enlace no válido",
+} as const;
+
+const MESSAGES = {
+  confirm:
+    "Si cancelas, el horario queda libre para otra persona. Esta acción no se puede deshacer.",
+  done: "Listo. Avisamos al taller y el horario quedó libre. Si quieres, puedes reservar otra hora.",
+  cancelled: "No hay nada más que hacer. Si quieres, puedes reservar otra hora.",
+  started: `La hora de tu reserva ya pasó o el taller ya la cerró. Si necesitas algo, escríbenos a ${SITE.email}.`,
+  invalid: `Revisa que el enlace esté completo, tal como llegó en tu correo. Si el problema sigue, escríbenos a ${SITE.email}.`,
+} as const;
+---
+
+<Base
+  title="Cancelar reserva — Vector Bikes"
+  description="Cancela tu reserva en Vector Bikes."
+  path="/reservas/cancelar"
+  noindex
+>
+  <section class="section">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="label">Cancelación</span>
+        <h1>{HEADINGS[result.view]}</h1>
+        <p>{MESSAGES[result.view]}</p>
+      </div>
+      {
+        booking && (
+          <aside class="ticket">
+            <div class="ticket-head">
+              <span class="label">Orden de reserva</span>
+              <span class="mono" style="font-size:.8rem">
+                {booking.code}
+              </span>
+            </div>
+            <dl class="ticket-body">
+              <div class="row">
+                <dt>Modalidad</dt>
+                <dd>{booking.mode === "retiro" ? "Retiro y devolución" : "La dejo en el taller"}</dd>
+              </div>
+              <div class="row">
+                <dt>Día</dt>
+                <dd>{booking.dateLabel}</dd>
+              </div>
+              <div class="row">
+                <dt>Hora</dt>
+                <dd class="mono">
+                  {booking.start} – {booking.end}
+                </dd>
+              </div>
+            </dl>
+            <div class="ticket-total">
+              <span class="label">Recargo</span>
+              <strong>{formatClp(booking.pickupFeeClp)}</strong>
+            </div>
+            <div class="ticket-foot">
+              {result.view === "confirm" ? (
+                <form method="post" action="/reservas/cancelar">
+                  <input type="hidden" name="token" value={token ?? ""} />
+                  <button type="submit" class="btn">
+                    Cancelar mi reserva
+                  </button>
+                </form>
+              ) : (
+                <a class="btn" href="/#reservar">
+                  Reservar otra hora
+                </a>
+              )}
+            </div>
+          </aside>
+        )
+      }
+    </div>
+  </section>
+</Base>

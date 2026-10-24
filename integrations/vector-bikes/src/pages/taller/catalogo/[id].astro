@@ -1,0 +1,249 @@
+---
+import { z } from "zod";
+import Card from "../../../components/taller/Card.astro";
+import PageHeader from "../../../components/taller/PageHeader.astro";
+import TallerLayout from "../../../layouts/TallerLayout.astro";
+import { isAllowedOrigin } from "../../../server/api/handlers.ts";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../../server/auth/permissions.ts";
+import { getDb } from "../../../server/db/client.ts";
+import { formatClp } from "../../../server/email/templates.ts";
+import {
+  getService,
+  priceFormSchema,
+  pricesFormSchema,
+  serviceFormSchema,
+  setServicePrice,
+  setServicePrices,
+  updateService,
+} from "../../../server/taller/catalog.ts";
+import { BIKE_TYPES, BIKE_TYPE_LABELS } from "../../../server/taller/rules.ts";
+
+export const prerender = false;
+const db = getDb();
+const now = new Date();
+const user = await requireAdmin(db, Astro.cookies.get(SESSION_COOKIE)?.value, now);
+if (!user)
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location: loginRedirect(Astro.url.pathname + Astro.url.search),
+      "cache-control": "no-store",
+    },
+  });
+if (!can(user.role, "catalog.view")) return forbiddenResponse();
+Astro.response.headers.set("cache-control", "no-store");
+const canEdit = can(user.role, "catalog.edit");
+if (Astro.request.method === "POST") {
+  if (!isAllowedOrigin(Astro.request)) return forbiddenResponse();
+  if (!can(user.role, "catalog.edit")) return forbiddenResponse();
+}
+const id = z.uuid().safeParse(Astro.params.id);
+if (!id.success)
+  return new Response("Servicio no encontrado.", {
+    status: 404,
+    headers: { "cache-control": "no-store" },
+  });
+const PATH = `/taller/catalogo/${id.data}`;
+const service = await getService(db, user, id.data);
+if (!service)
+  return new Response("Servicio no encontrado.", {
+    status: 404,
+    headers: { "cache-control": "no-store" },
+  });
+const formSchema = z.discriminatedUnion("accion", [
+  serviceFormSchema.extend({ accion: z.literal("servicio") }),
+  priceFormSchema.extend({ accion: z.literal("precio") }),
+  pricesFormSchema.extend({ accion: z.literal("precios") }),
+]);
+const textFields = [
+  { key: "description", label: "Descripción" },
+  { key: "usualMaterials", label: "Materiales habituales" },
+  { key: "aftercare", label: "Recomendaciones" },
+];
+const fieldMessages: Record<string, string> = {
+  name: "Ingresa un nombre de 2 a 80 caracteres.",
+  estimatedMinutes: "Ingresa una duración entre 5 y 1440 minutos, sin decimales.",
+  priceClp: "Ingresa un precio en pesos chilenos entre 0 y 2147483647, sin decimales.",
+  description: "La descripción debe tener como máximo 1000 caracteres.",
+  usualMaterials: "Los materiales deben tener como máximo 1000 caracteres.",
+  aftercare: "Las recomendaciones deben tener como máximo 1000 caracteres.",
+};
+let error = "";
+let priceValues: Record<string, string> = Object.fromEntries(
+  BIKE_TYPES.map((type) => [type, String(service.prices[type] ?? "")]),
+);
+let values: Record<string, string> = Object.fromEntries(
+  ["name", "estimatedMinutes", ...textFields.map((field) => field.key)].map((key) => [
+    key,
+    String(service[key as keyof typeof service] ?? ""),
+  ]),
+);
+let isActive = service.isActive;
+const fieldErrors: Record<string, string> = {};
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const raw = Object.fromEntries([...form].map(([key, value]) => [key, String(value)]));
+  if (raw.accion === "precios") {
+    priceValues = Object.fromEntries(BIKE_TYPES.map((type) => [type, raw[`precio_${type}`] ?? ""]));
+  } else if (
+    raw.accion === "precio" &&
+    raw.bikeType &&
+    BIKE_TYPES.some((type) => type === raw.bikeType)
+  ) {
+    priceValues[raw.bikeType] = raw.priceClp ?? "";
+  }
+  if (raw.accion === "servicio") {
+    values = raw;
+    isActive = raw.isActive === "1";
+  }
+  const parsed = formSchema.safeParse({
+    ...raw,
+    serviceId: id.data,
+    prices: priceValues,
+    isActive: raw.isActive === "1",
+  });
+  if (!parsed.success) {
+    Astro.response.status = 422;
+    error = "Revisa los datos del formulario.";
+    for (const issue of parsed.error.issues) {
+      const field = String(issue.path[0]);
+      if (field === "prices" || field === "priceClp") {
+        const type = field === "prices" ? String(issue.path[1]) : raw.bikeType;
+        fieldErrors[`price-${type}`] = fieldMessages.priceClp ?? "Revisa este dato.";
+      } else {
+        fieldErrors[field] = fieldMessages[field] ?? "Revisa este dato.";
+      }
+    }
+  } else {
+    const result =
+      parsed.data.accion === "servicio"
+        ? await updateService(db, user, id.data, parsed.data, now)
+        : parsed.data.accion === "precios"
+          ? await setServicePrices(db, user, parsed.data, now)
+          : await setServicePrice(db, user, parsed.data, now);
+    if (result.ok)
+      return new Response(null, {
+        status: 303,
+        headers: {
+          location: `${PATH}?hecho=${parsed.data.accion}`,
+          "cache-control": "no-store",
+        },
+      });
+    if (result.code === "forbidden") return forbiddenResponse();
+    Astro.response.status = result.code === "not_found" ? 404 : 409;
+    error =
+      result.code === "not_found"
+        ? "Servicio no encontrado."
+        : "Ya existe un servicio con ese nombre en tu sucursal.";
+    if (result.code === "name_taken") fieldErrors.name = error;
+  }
+}
+const notices: Record<string, string> = {
+  servicio: "Servicio actualizado.",
+  precio: "Precio actualizado.",
+  precios: "Precios guardados.",
+};
+const notice = notices[Astro.url.searchParams.get("hecho") ?? ""];
+---
+
+<TallerLayout title={`${service.name} — Vector Bikes`} description="Detalle del servicio y precios por tipo de bicicleta." path="/taller/catalogo" user={user}>
+  <div class="stack">
+    <PageHeader title={service.name}>
+      <a slot="actions" href="/taller/catalogo">Volver al catálogo</a>
+    </PageHeader>
+    {notice && <p role="status">{notice}</p>}
+    {error && <p role="alert" id="form-error">{error}</p>}
+    <Card>
+      {canEdit ? (
+        <form method="post" action={PATH}>
+          <input type="hidden" name="accion" value="servicio" />
+          <div class="fields">
+            <div class="field">
+              <label for="name">Nombre</label>
+              <input id="name" name="name" required minlength="2" maxlength="80" value={values.name} aria-invalid={Boolean(fieldErrors.name)} aria-describedby={fieldErrors.name ? "name-error" : undefined} />
+              {fieldErrors.name && <p id="name-error">{fieldErrors.name}</p>}
+            </div>
+            <div class="field">
+              <label for="estimatedMinutes">Duración estimada (minutos)</label>
+              <input id="estimatedMinutes" name="estimatedMinutes" type="number" required min="5" max="1440" step="1" value={values.estimatedMinutes} aria-invalid={Boolean(fieldErrors.estimatedMinutes)} aria-describedby={fieldErrors.estimatedMinutes ? "estimatedMinutes-error" : undefined} />
+              {fieldErrors.estimatedMinutes && <p id="estimatedMinutes-error">{fieldErrors.estimatedMinutes}</p>}
+            </div>
+            {textFields.map((field) => (
+              <div class="field">
+                <label for={field.key}>{field.label}</label>
+                <textarea id={field.key} name={field.key} maxlength="1000" rows="3" aria-invalid={Boolean(fieldErrors[field.key])} aria-describedby={fieldErrors[field.key] ? `${field.key}-error` : undefined}>{values[field.key]}</textarea>
+                {fieldErrors[field.key] && <p id={`${field.key}-error`}>{fieldErrors[field.key]}</p>}
+              </div>
+            ))}
+            <fieldset>
+              <legend>Estado del servicio</legend>
+              <div class="options"><label><input type="checkbox" name="isActive" value="1" checked={isActive} />Servicio activo</label></div>
+            </fieldset>
+          </div>
+          <button type="submit" class="btn">Guardar servicio</button>
+        </form>
+      ) : (
+        <dl class="data">
+          <dt>Duración estimada</dt><dd>{service.estimatedMinutes} minutos</dd>
+          <dt>Estado</dt><dd>{service.isActive ? "Activo" : "Inactivo"}</dd>
+          {textFields.map((field) => <><dt>{field.label}</dt><dd class={values[field.key] ? undefined : "muted"}>{values[field.key] || "Sin información"}</dd></>)}
+        </dl>
+      )}
+    </Card>
+    <Card title="Precios por tipo de bicicleta">
+      {canEdit ? (
+      <form method="post" action={PATH}>
+        <input type="hidden" name="accion" value="precios" />
+        <div class="fields catalog-price-fields">
+            {BIKE_TYPES.map((type) => (
+              <div class="field">
+                <label for={`price-${type}`}>Precio {BIKE_TYPE_LABELS[type]} (CLP)</label>
+                <input id={`price-${type}`} name={`precio_${type}`} type="text" inputmode="decimal" placeholder="No aplica" value={priceValues[type]} aria-invalid={Boolean(fieldErrors[`price-${type}`])} aria-describedby={fieldErrors[`price-${type}`] ? `price-error-${type}` : undefined} />
+                {fieldErrors[`price-${type}`] && <p id={`price-error-${type}`}>{fieldErrors[`price-${type}`]}</p>}
+              </div>
+            ))}
+        </div>
+        <button type="submit" class="btn">Guardar precios</button>
+      </form>
+      ) : (
+      <div class="scroll-x">
+        <table class="dense">
+          <caption>Precios en pesos chilenos</caption>
+          <thead><tr><th scope="col">Tipo de bicicleta</th><th scope="col">Precio actual</th></tr></thead>
+          <tbody>
+            {BIKE_TYPES.map((type) => (
+              <tr>
+                <th scope="row">{BIKE_TYPE_LABELS[type]}</th>
+                <td class={service.prices[type] === undefined ? "muted" : "mono"}>{service.prices[type] === undefined ? "Sin precio" : formatClp(service.prices[type])}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      )}
+    </Card>
+  </div>
+</TallerLayout>
+
+<style is:global>
+  .taller .catalog-price-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-block-end: 16px;
+  }
+  .taller .catalog-price-fields input {
+    width: 100%;
+    min-width: 0;
+  }
+  @media (min-width: 1200px) {
+    .taller .catalog-price-fields {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 479px) {
+    .taller .catalog-price-fields {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+</style>

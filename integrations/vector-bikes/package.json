@@ -1,0 +1,63 @@
+{
+  "name": "vector-bikes",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env node_modules/astro/bin/astro.mjs dev --host 0.0.0.0 --port 4321",
+    "build": "astro build",
+    "start": "HOST=0.0.0.0 PORT=4321 node dist/server/entry.mjs",
+    "format": "biome check --write .",
+    "lint": "biome check .",
+    "check": "biome ci . && astro check && tsc --noEmit",
+    "test": "vitest run",
+    "test:build": "VITEST_SUITE=build vitest run",
+    "smoke": "sh scripts/smoke.sh",
+    "gate": "pnpm check && pnpm test && pnpm build && pnpm test:build && pnpm test:tablet && pnpm smoke",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --env-file-if-exists=.env scripts/db-migrate.ts",
+    "db:check": "node --env-file-if-exists=.env scripts/db-check.ts",
+    "admin:set-password": "node --env-file-if-exists=.env scripts/admin-set-password.ts",
+    "reminders:send": "node --env-file-if-exists=.env scripts/reminders-send.ts",
+    "test:tablet": "playwright test"
+  },
+  "dependencies": {
+    "@astrojs/netlify": "8.2.10",
+    "@astrojs/node": "11.1.5",
+    "@astrojs/preact": "6.0.5",
+    "@astrojs/sitemap": "3.7.4",
+    "@fontsource-variable/archivo": "5.3.0",
+    "@fontsource/ibm-plex-mono": "5.3.0",
+    "@fontsource/michroma": "5.3.0",
+    "@replit/object-storage": "1.0.0",
+    "@tailwindcss/vite": "4.3.3",
+    "astro": "7.3.2",
+    "drizzle-orm": "0.45.2",
+    "ics": "3.12.0",
+    "luxon": "3.7.2",
+    "openai": "^7.42.0",
+    "postgres": "3.4.9",
+    "preact": "10.29.8",
+    "qrcode": "1.5.4",
+    "resend": "6.28.1",
+    "sharp": "0.35.5",
+    "signature_pad": "5.1.4",
+    "tailwindcss": "4.3.3",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.10",
+    "@biomejs/biome": "2.5.13",
+    "@electric-sql/pglite": "0.5.8",
+    "@playwright/test": "1.63.0",
+    "@types/luxon": "3.7.5",
+    "@types/node": "^24",
+    "@types/qrcode": "1.5.6",
+    "drizzle-kit": "0.31.10",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.1"
+  }
+}

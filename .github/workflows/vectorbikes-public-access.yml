@@ -1,0 +1,17 @@
+name: Verificar acceso público de Vector Bikes
+on:
+  # El propietario exige validar con su sesión. Las consultas anónimas
+  # quedan disponibles solo para una ejecución manual expresamente autorizada.
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-access:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verificar acceso sin sesión y rastreo
+        run: node scripts/check-public-site.mjs https://vectorbikestest.cl

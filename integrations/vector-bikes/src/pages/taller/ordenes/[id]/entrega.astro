@@ -1,0 +1,235 @@
+---
+import { z } from "zod";
+import Card from "../../../../components/taller/Card.astro";
+import OrderTabs from "../../../../components/taller/OrderTabs.astro";
+import PageHeader from "../../../../components/taller/PageHeader.astro";
+import SignaturePad from "../../../../components/taller/SignaturePad.tsx";
+import TallerLayout from "../../../../layouts/TallerLayout.astro";
+import { ORDER_TABS } from "../../../../lib/taller-tabs.ts";
+import { isAllowedOrigin } from "../../../../server/api/handlers.ts";
+import { loginRedirect, requireAdmin, SESSION_COOKIE } from "../../../../server/auth/admin-auth.ts";
+import { can, forbiddenResponse } from "../../../../server/auth/permissions.ts";
+import { getDb } from "../../../../server/db/client.ts";
+import { formatClp } from "../../../../server/email/templates.ts";
+import { getStorage } from "../../../../server/storage/storage.ts";
+import { completeDelivery } from "../../../../server/taller/delivery.ts";
+import { formatOrderNumber } from "../../../../server/taller/orders.ts";
+import {
+  listPayments,
+  paymentFormSchema,
+  recordPayment,
+  voidPayment,
+} from "../../../../server/taller/payments.ts";
+import {
+  PAYMENT_KINDS,
+  PAYMENT_KIND_LABELS,
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
+  STATUS_LABELS,
+  TERMINAL_STATUSES,
+} from "../../../../server/taller/rules.ts";
+import type { OrderStatus } from "../../../../server/taller/rules.ts";
+import { orderDetail } from "../../../../server/taller/status.ts";
+
+export const prerender = false;
+const db = getDb();
+const now = new Date();
+const user = await requireAdmin(db, Astro.cookies.get(SESSION_COOKIE)?.value, now);
+if (!user)
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location: loginRedirect(Astro.url.pathname + Astro.url.search),
+      "cache-control": "no-store",
+    },
+  });
+if (Astro.request.method === "POST" && !isAllowedOrigin(Astro.request)) return forbiddenResponse();
+if (!can(user.role, "payments.record")) return forbiddenResponse();
+Astro.response.headers.set("cache-control", "no-store");
+
+const actionSchema = z.discriminatedUnion("action", [
+  paymentFormSchema.extend({ action: z.literal("record") }),
+  z.strictObject({ action: z.literal("void"), paymentId: z.uuid() }),
+  z.strictObject({ action: z.literal("deliver"), firma: z.string(), nombre: z.string() }),
+]);
+let submitted: Record<string, string> = {};
+let parsedInput: ReturnType<typeof actionSchema.safeParse> | undefined;
+const fieldErrors = new Set<string>();
+let error = "";
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  submitted = Object.fromEntries([...form].map(([key, value]) => [key, String(value)]));
+  if (submitted.action === "void" && !can(user.role, "payments.void")) return forbiddenResponse();
+  if (submitted.action === "deliver" && !can(user.role, "delivery.complete"))
+    return forbiddenResponse();
+  parsedInput = actionSchema.safeParse(submitted);
+  if (!parsedInput.success) {
+    Astro.response.status = 422;
+    error =
+      submitted.action === "deliver"
+        ? "Escribe el nombre de quien retira."
+        : "Revisa el tipo, método y monto del pago. El monto debe ser un entero mayor que cero.";
+    for (const issue of parsedInput.error.issues) fieldErrors.add(String(issue.path[0]));
+  }
+}
+const id = z.uuid().safeParse(Astro.params.id);
+if (!id.success)
+  return new Response("Orden no encontrada.", {
+    status: 404,
+    headers: { "cache-control": "no-store" },
+  });
+const detail = await orderDetail(db, user, id.data);
+if (!detail.ok) {
+  if (detail.code === "forbidden") return forbiddenResponse();
+  return new Response("Orden no encontrada.", {
+    status: 404,
+    headers: { "cache-control": "no-store" },
+  });
+}
+const { order, customer } = detail;
+const PATH = Astro.url.pathname;
+const payments = await listPayments(db, user, order.id);
+if (parsedInput?.success) {
+  const input = parsedInput.data;
+  const { action, ...fields } = input;
+  const result =
+    input.action === "deliver"
+      ? await completeDelivery(
+          db,
+          await getStorage(),
+          user,
+          {
+            orderId: order.id,
+            signatureDataUrl: input.firma,
+            signedByName: input.nombre,
+          },
+          now,
+        )
+      : input.action === "record"
+        ? await recordPayment(db, user, order.id, fields, now)
+        : payments.some((payment) => payment.id === input.paymentId)
+          ? await voidPayment(db, user, input.paymentId, now)
+          : { ok: false, code: "not_found" };
+  if (result.ok)
+    return new Response(null, {
+      status: 303,
+      headers: {
+        location: `${PATH}?hecho=${action}`,
+        "cache-control": "no-store",
+      },
+    });
+  if (result.code === "forbidden") return forbiddenResponse();
+  Astro.response.status =
+    result.code === "not_found"
+      ? 404
+      : action === "deliver"
+        ? ["invalid_status", "already_signed", "balance_pending"].includes(result.code ?? "")
+          ? 409
+          : 422
+        : result.code === "validation_error"
+          ? 422
+          : 409;
+  const errors: Record<string, string> = {
+    invalid_status: "El estado de la orden no permite esta operación de pago.",
+    invalid_amount: "El monto debe ser un entero mayor que cero y no superar el saldo.",
+    deposit_exists: "Ya hay un abono vigente. Anúlalo antes de registrar otro.",
+    not_found: "No se encontró la orden o el pago.",
+  };
+  if (action === "deliver")
+    Object.assign(errors, {
+      balance_pending: "Hay saldo pendiente: registra el pago antes de entregar",
+      missing_signature: "Falta la firma de quien retira",
+      invalid_signature: "La firma no es válida; vuelve a firmar.",
+      invalid_status: "La orden ya no está lista para entregar.",
+      already_signed: "La orden ya no está lista para entregar.",
+      validation_error: "Escribe el nombre de quien retira.",
+    });
+  error = Object.hasOwn(errors, result.code ?? "")
+    ? (errors[result.code ?? ""] ?? "Revisa los datos del formulario.")
+    : "Revisa los datos del formulario.";
+  if (result.code === "invalid_amount") fieldErrors.add("amountClp");
+  if (result.code === "deposit_exists") fieldErrors.add("kind");
+  if (action === "deliver" && result.code === "validation_error") fieldErrors.add("nombre");
+}
+const number = formatOrderNumber(order.number);
+const balance = order.totalClp - order.paidClp;
+const editable = !(TERMINAL_STATUSES as readonly string[]).includes(order.status);
+const notices: Record<string, string> = {
+  record: "Pago registrado.",
+  void: "Pago anulado.",
+  deliver: "Bicicleta entregada.",
+};
+const done = Astro.url.searchParams.get("hecho") ?? "";
+const notice = Object.hasOwn(notices, done) ? notices[done] : undefined;
+function invalid(field: string) {
+  return submitted.action === "record" && fieldErrors.has(field);
+}
+const tabs = ORDER_TABS.filter((tab) => can(user.role, tab.permission));
+---
+
+<TallerLayout title={`${number} · Pagos y entrega — Vector Bikes`} description="Pagos y saldo de la orden de trabajo." path="/taller/ordenes" user={user}>
+  <div class="stack">
+    <PageHeader title={`${number} · Pagos y entrega`} status={{ status: order.status, label: STATUS_LABELS[order.status as OrderStatus] }} />
+    <OrderTabs orderId={order.id} active="entrega" tabs={tabs} />
+    {notice && <p role="status">{notice}</p>}
+    {error && <p id="form-error" role="alert">{error}</p>}
+    <Card id="summary-title" title="Resumen de pagos">
+      <dl class="data"><dt>Total</dt><dd class="mono">{formatClp(order.totalClp)}</dd>
+        <dt>Pagado</dt><dd class="mono">{formatClp(order.paidClp)}</dd>
+        <dt>Saldo</dt><dd class="mono">{formatClp(balance)}</dd></dl>
+    </Card>
+    <Card>
+      <div class="scroll-x"><table class="dense">
+        <caption>Pagos vigentes</caption>
+        <thead><tr><th scope="col">Tipo de pago</th><th scope="col">Método</th>
+          <th scope="col">Monto</th><th scope="col">Acciones</th></tr></thead>
+        <tbody>{payments.map((payment) => <tr>
+          <td>{PAYMENT_KIND_LABELS[payment.kind]}</td><td>{PAYMENT_METHOD_LABELS[payment.method]}</td>
+          <td class="mono">{formatClp(payment.amountClp)}</td><td>
+            {order.status !== "entregada" && can(user.role, "payments.void")
+              ? <form method="post" action={PATH}>
+                  <input type="hidden" name="action" value="void" />
+                  <input type="hidden" name="paymentId" value={payment.id} />
+                  <button class="btn ghost" type="submit" aria-label={`Anular ${PAYMENT_KIND_LABELS[payment.kind]} de ${formatClp(payment.amountClp)}`}>Anular</button>
+                </form> : <span class="muted">Sin acciones</span>}
+          </td></tr>)}</tbody>
+      </table></div>
+      {payments.length === 0 && <p class="muted">No hay pagos registrados.</p>}
+    </Card>
+    {!editable && <p class="muted">Esta orden ya no admite nuevos pagos.</p>}
+    {editable && balance > 0 && <Card><form method="post" action={PATH}>
+      <input type="hidden" name="action" value="record" />
+      <div class="fields">
+        <fieldset><legend>Tipo de pago</legend><div class="options">
+          {PAYMENT_KINDS.map((kind) => <label>
+            <input name="kind" type="radio" value={kind} required checked={kind === (submitted.action === "record" ? submitted.kind : "final")} aria-invalid={invalid("kind")} aria-describedby={invalid("kind") ? "form-error" : undefined} />
+            {PAYMENT_KIND_LABELS[kind]}</label>)}
+        </div></fieldset>
+        <fieldset><legend>Método</legend><div class="options">
+          {PAYMENT_METHODS.map((method) => <label>
+            <input name="method" type="radio" value={method} required checked={method === (submitted.action === "record" ? submitted.method : "transferencia")} aria-invalid={invalid("method")} aria-describedby={invalid("method") ? "form-error" : undefined} />
+            {PAYMENT_METHOD_LABELS[method]}</label>)}
+        </div></fieldset>
+        <div class="field"><label for="amountClp">Monto</label>
+          <input id="amountClp" name="amountClp" type="number" min="1" max={balance} step="1" required value={submitted.action === "record" ? submitted.amountClp : balance} aria-invalid={invalid("amountClp")} aria-describedby={invalid("amountClp") ? "form-error" : undefined} />
+        </div>
+        <button class="btn" type="submit">Registrar pago</button>
+      </div>
+    </form></Card>}
+    <Card id="delivery-title" title="Entrega y firma">
+      {order.status === "entregada" ? <p>Bicicleta entregada.</p>
+        : order.status === "lista_para_retirar" && can(user.role, "delivery.complete")
+          ? <form method="post" action={PATH}>
+              <input type="hidden" name="action" value="deliver" />
+              <div class="fields">
+                <div class="full"><SignaturePad client:load name="firma" label="Firma de quien retira" /></div>
+                <div class="field"><label for="nombre">Nombre de quien retira</label>
+                  <input id="nombre" name="nombre" type="text" required minlength="2" maxlength="80" autocomplete="name" value={submitted.action === "deliver" ? submitted.nombre : customer.name} aria-invalid={fieldErrors.has("nombre")} aria-describedby={fieldErrors.has("nombre") ? "form-error" : undefined} />
+                </div>
+                <button class="btn" type="submit">Entregar bicicleta</button>
+              </div>
+            </form>
+          : <p class="muted">La entrega estará disponible cuando la orden esté Lista para retirar.</p>}
+    </Card>
+  </div>
+</TallerLayout>

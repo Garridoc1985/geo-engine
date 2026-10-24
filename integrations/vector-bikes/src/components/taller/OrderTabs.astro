@@ -1,0 +1,67 @@
+---
+interface Props {
+  orderId: string;
+  /** Sufijo de la sección activa; "" es el detalle. */
+  active: string;
+  tabs: readonly { suffix: string; label: string; external?: boolean }[];
+}
+
+const { orderId, active, tabs } = Astro.props;
+const href = (suffix: string) =>
+  suffix ? `/taller/ordenes/${orderId}/${suffix}` : `/taller/ordenes/${orderId}`;
+---
+
+<nav class="order-tabs" aria-label="Secciones de la orden">
+  <ul>
+    {
+      tabs.map((tab) => (
+        <li class:list={{ "is-external": tab.external }}>
+          <a href={href(tab.suffix)} aria-current={tab.suffix === active ? "page" : undefined}>
+            {tab.label}
+            {tab.external && <span aria-hidden="true">&#8599;</span>}
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+</nav>
+
+<style is:global>
+  .taller .order-tabs {
+    border-bottom: 1px solid var(--rule);
+  }
+  .taller .order-tabs ul {
+    display: flex;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    overflow-x: auto;
+    list-style: none;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+  .taller .order-tabs a {
+    border: 1px solid transparent;
+    border-radius: 2px 2px 0 0;
+    color: var(--ink-2);
+    white-space: nowrap;
+    text-decoration: none;
+  }
+  /* La etiqueta sale del marco del taller: va separada y marcada. */
+  .taller .order-tabs .is-external {
+    margin-inline-start: auto;
+    padding-inline-start: 12px;
+    border-inline-start: 1px solid var(--rule);
+  }
+  .taller .order-tabs .is-external a {
+    gap: 6px;
+  }
+  .taller .order-tabs a[aria-current="page"] {
+    border-color: var(--rule);
+    border-bottom-color: var(--surface);
+    margin-bottom: -1px;
+    background: var(--surface);
+    color: var(--ink);
+    font-weight: 600;
+  }
+</style>

@@ -1,0 +1,44 @@
+---
+interface Props {
+  title: string;
+  subtitle?: string;
+  /** Chip de estado; solo se pasa donde la página ya lo mostraba. */
+  status?: { status: string; label: string };
+}
+
+const { title, subtitle, status } = Astro.props;
+const hasActions = Astro.slots.has("actions");
+---
+
+<header class="card page-head">
+  <div class="page-head-main">
+    <h1>{title}</h1>
+    {subtitle && <p class="page-head-sub">{subtitle}</p>}
+  </div>
+  {status && <span class={`status status--${status.status}`}>{status.label}</span>}
+  {hasActions && <div class="page-head-actions"><slot name="actions" /></div>}
+</header>
+
+<style is:global>
+  .taller .page-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: start;
+    gap: 12px 16px;
+  }
+  .taller .page-head-main {
+    flex: 1 1 260px;
+  }
+  .taller .page-head-sub {
+    margin-block-start: 8px;
+    color: var(--ink-2);
+  }
+  .taller .page-head-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .taller .page-head-actions a {
+    text-decoration: none;
+  }
+</style>
