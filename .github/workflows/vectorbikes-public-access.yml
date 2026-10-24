@@ -1,12 +1,12 @@
 name: Verificar acceso público de Vector Bikes
 on:
+  # El propietario exige validar con su sesión. Las consultas anónimas
+  # quedan disponibles solo para una ejecución manual expresamente autorizada.
   workflow_dispatch:
-  deployment_status:
 permissions:
   contents: read
 jobs:
   public-access:
-    if: github.event_name == 'workflow_dispatch' || (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'production')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
