@@ -5,7 +5,7 @@ import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import archivoLatin from "@fontsource-variable/archivo/files/archivo-latin-wght-normal.woff2?url";
 import michromaLatin from "@fontsource/michroma/files/michroma-latin-400-normal.woff2?url";
-import { FAQ } from "../lib/faq.ts";
+import { FAQ, PUBLIC_FAQ } from "../lib/faq.ts";
 import { geoAvailable } from "../lib/geo.ts";
 import { SITE, whatsappHref } from "../lib/site.ts";
 import "../styles/global.css";
@@ -16,9 +16,18 @@ interface Props {
   path: string;
   noindex?: boolean;
   chrome?: "site" | "none";
+  bookingEnabled?: boolean;
 }
 
-const { title, description, path, noindex = false, chrome = "site" } = Astro.props;
+const {
+  title,
+  description,
+  path,
+  noindex = false,
+  chrome = "site",
+  bookingEnabled = true,
+} = Astro.props;
+const faq = bookingEnabled ? FAQ : PUBLIC_FAQ;
 const canonical = new URL(path, Astro.site).href;
 const whatsapp = whatsappHref(import.meta.env.PUBLIC_WHATSAPP_NUMBER);
 const ogImage = new URL("/brand/vector-bikes-logo.png", Astro.site).href;
@@ -64,7 +73,7 @@ const jsonLd = JSON.stringify({
     localBusiness,
     {
       "@type": "FAQPage",
-      mainEntity: FAQ.map(({ q, a }) => ({
+      mainEntity: faq.map(({ q, a }) => ({
         "@type": "Question",
         name: q,
         acceptedAnswer: { "@type": "Answer", text: a },
@@ -111,8 +120,8 @@ const jsonLd = JSON.stringify({
               <a href="/#retiro">Retiro a domicilio</a>
               <a href="/#taller">Taller</a>
               <a href="/#preguntas">Preguntas</a>
-              <a href="/#reservar" class="btn">
-                Reservar hora
+              <a href={bookingEnabled ? "/#reservar" : "/#consultar"} class="btn">
+                {bookingEnabled ? "Reservar hora" : "Consultar"}
               </a>
             </nav>
           </div>

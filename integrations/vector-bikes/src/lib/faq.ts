@@ -20,3 +20,18 @@ export const FAQ = [
     a: "No. El sitio bloquea automáticamente los feriados, como el 18 y 19 de septiembre.",
   },
 ] as const;
+
+/** Versión informativa: no atribuye funciones al sistema de reservas ausente. */
+export const PUBLIC_FAQ = [
+  FAQ[0],
+  FAQ[1],
+  {
+    q: "¿Cómo consulto disponibilidad?",
+    a: "Las reservas en línea no están habilitadas en este sitio. Para consultar disponibilidad, llama al +56 9 8509 5780.",
+  },
+  FAQ[3],
+  {
+    q: "¿Atienden domingos y feriados?",
+    a: "No. El taller está cerrado los domingos y feriados.",
+  },
+] as const;

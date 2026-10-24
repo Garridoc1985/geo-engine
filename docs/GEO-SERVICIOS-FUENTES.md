@@ -21,10 +21,36 @@ reparaciones específicas no declaradas. Las categorías MTB, ruta, gravel, urba
 y e-bike del sistema no se convirtieron en promesas de capacidad técnica.
 
 Se preparó /servicios en el build informativo y un enlace desde la portada.
-El título y la descripción corresponden al contenido visible. La página conserva
-noindex durante la revisión; el sitio no se abrió a rastreadores en este paso.
-Actualización desplegada: `6adb91abb0ed644d09a3c087`, estado ready confirmado por
-Netlify. Portada y /servicios comprobadas en navegador autenticado; en viewport
-1366 px, /servicios tiene contenido de 1351 px sin desbordamiento y cero formularios.
-Se mantiene la protección privada y noindex. Pendiente: autorizar la habilitación
-pública e indexación de las páginas aprobadas. No se afirma visibilidad ni citas medidas.
+El título y la descripción corresponden al contenido visible.
+
+Estado vigente: el [PR #3](https://github.com/Garridoc1985/geo-engine/pull/3)
+continúa en borrador y la [vista previa](https://deploy-preview-3--vectorbikestestgeo.netlify.app/)
+es pública. El dominio definitivo aprobado es `vectorbikestest.cl`. La publicación
+de esta versión en producción sigue pendiente por decisión expresa del usuario de
+mantenerla en vista previa. La disponibilidad pública de la vista previa no acredita
+indexación externa, descubrimiento por agentes ni citas medidas.
+
+En la revisión del código del 23 de octubre se detectó que la portada conservaba
+instrucciones para reservar bloques aunque las reservas en línea están deshabilitadas.
+El FAQ visible y su JSON-LD también describían un enlace de cancelación por correo
+y el bloqueo automático de feriados, funciones del sistema de reservas que no forma
+parte de este despliegue informativo. La portada, la navegación de sus cuatro páginas
+y el FAQ ahora dirigen las consultas al teléfono. El FAQ visible y el JSON-LD usan
+la misma variante informativa; el flujo original conserva su formulario y textos.
+
+Validación de esta corrección:
+
+- Formato y chequeo estático aprobados: cero errores; permanecen dos advertencias
+  CSS y 61 sugerencias de tipos preexistentes.
+- Build original aprobado y sus 37 pruebas existentes aprobadas.
+- Build público aprobado con cuatro páginas. Inspección de sus archivos locales:
+  cinco preguntas y respuestas idénticas entre HTML y `FAQPage`, un `h1` por página,
+  CTA de consulta en las cuatro páginas y ausencia de promesas de reservas en la portada.
+- `LocalBusiness` conserva dirección, teléfono, correo y horarios aprobados.
+  Canonicals del dominio definitivo; sitemap con inicio, servicios y privacidad.
+  El asistente conserva `noindex` y queda fuera del sitemap.
+
+Esta revisión no repite la batería de base de datos y backend ya documentada en
+`integrations/vector-bikes/docs/VALIDACION-BACKEND-20261023.md`: no cambió esa lógica.
+La comprobación del artefacto fue local, sin solicitudes HTTP anónimas, y no se
+ejecutaron pruebas de tablet. El despliegue y la revisión visual se siguen en el PR.
