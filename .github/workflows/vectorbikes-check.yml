@@ -28,3 +28,60 @@ jobs:
         run: corepack pnpm@12.4.2 exec vitest run tests/unit/assistant.test.ts tests/unit/public-knowledge.test.ts --pool=threads --maxWorkers=1
       - name: Compilar solo páginas públicas
         run: corepack pnpm@12.4.2 exec astro build --config astro.public-test.config.mjs
+  regression:
+    needs: public-site
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: integrations/vector-bikes
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vector_bikes_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/vector_bikes_ci
+      PUBLIC_SITE_URL: https://vectorbikes.cl
+      PUBLIC_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+      TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
+      SESSION_SECRET: test-session-secret-0123456789abcdef0123
+      CANCEL_TOKEN_SECRET: test-cancel-secret-0123456789abcdef123
+      TASKS_SECRET: test-tasks-secret-0123456789abcdef0123
+      EMAIL_TRANSPORT: console
+      EMAIL_FROM: Vector Bikes <reservas@send.vectorbikes.cl>
+      EMAIL_REPLY_TO: info@vectorbikes.cl
+      SHOP_NOTIFY_EMAIL: info@vectorbikes.cl
+      STORAGE_DRIVER: local
+      STORAGE_LOCAL_DIR: .storage-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Instalar dependencias fijadas
+        run: corepack pnpm@12.4.2 install --frozen-lockfile
+      - name: Validar formato sin cambios pendientes
+        run: |
+          corepack pnpm@12.4.2 format
+          git diff --exit-code
+      - name: Ejecutar todas las pruebas unitarias y de integración
+        run: corepack pnpm@12.4.2 exec vitest run --pool=threads --maxWorkers=1
+      - name: Migrar exclusivamente la base desechable de CI
+        run: corepack pnpm@12.4.2 db:migrate
+      - name: Compilar aplicación y verificar build
+        run: |
+          corepack pnpm@12.4.2 build
+          corepack pnpm@12.4.2 test:build
+      # Tablet permanece fuera del alcance por indicación del propietario.
+      - name: Comprobar servidor contra la base desechable
+        run: corepack pnpm@12.4.2 smoke
