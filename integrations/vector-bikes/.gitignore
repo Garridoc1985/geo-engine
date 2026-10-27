@@ -28,8 +28,12 @@ test-results/
 playwright-report/
 blob-report/
 
-# Publicación GEO: contenido empresarial y respaldo local fuera del código.
-public/geo/
+# Solo los cuatro archivos de publicación pública revisados se versionan.
+public/geo/*
+!public/geo/index.html
+!public/geo/knowledge.json
+!public/geo/manifest.json
+!public/geo/sitemap.xml
 public/.geo-stage-*/
 .geo-backup/
 

@@ -50,7 +50,21 @@ export function validateRelease(directory, siteUrl) {
     const hash = createHash("sha256").update(files[name]).digest("hex");
     if (manifest.files?.[name] !== hash) throw new Error(`Integridad inválida: ${name}`);
   }
-  JSON.parse(files["knowledge.json"].toString("utf8"));
+  const knowledge = JSON.parse(files["knowledge.json"].toString("utf8"));
+  const version = createHash("sha256").update(files["knowledge.json"]).digest("hex");
+  if (
+    version !== manifest.content_version ||
+    knowledge.schema_version !== "1" ||
+    knowledge.company_id !== manifest.company_id ||
+    knowledge.canonical_url !== manifest.canonical_url ||
+    knowledge.name !== "Vector Bikes" ||
+    !Array.isArray(knowledge.items) ||
+    knowledge.items.length < 1 ||
+    knowledge.items.length > 30 ||
+    knowledge.items.length !== manifest.item_count
+  ) {
+    throw new Error("El conocimiento no coincide con la empresa, versión o cantidad declarada.");
+  }
   return files;
 }
 

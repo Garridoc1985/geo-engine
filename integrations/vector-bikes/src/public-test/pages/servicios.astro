@@ -1,32 +1,39 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { SITE } from "../../lib/site.ts";
+import { KNOWLEDGE_VERSION, PUBLIC_KNOWLEDGE } from "../../lib/public-knowledge.ts";
+const order = [
+  "business_model",
+  "products_services",
+  "commercial_process",
+  "operational_context",
+  "financial_context",
+  "company_profile",
+  "operational_process",
+];
+const sections = order.flatMap((domain) =>
+  PUBLIC_KNOWLEDGE.items.filter((item) => item.document_id.includes(`:domain:${domain}:`)),
+);
 ---
 <Base
-  title="Diagnóstico y retiro de bicicletas en Vitacura | Vector Bikes"
-  description="Diagnóstico y cotización en el taller Vector Bikes. Retiro y devolución por $15.000 en Vitacura y Las Condes. Dirección, horarios de recepción y contacto."
+  title="Mecánica de bicicletas y retiro en Vitacura | Vector Bikes"
+  description="Taller de mecánica de bicicletas en Vitacura. Diagnóstico y cotización, retiro y devolución por $15.000 en Vitacura y Las Condes, horarios y medios de pago."
   path="/servicios"
   bookingEnabled={false}
 >
-  <section class="section">
+  <section class="section" data-knowledge-version={KNOWLEDGE_VERSION}>
     <div class="wrap">
       <span class="label">Vector Bikes · Vitacura</span>
-      <h1>Diagnóstico y retiro de bicicletas.</h1>
-      <p class="lede">Atención en {SITE.streetAddress}, Vitacura. Consulta disponibilidad al <a href={`tel:${SITE.phone}`}>{SITE.phoneDisplay}</a>.</p>
-      <h2>Diagnóstico y cotización en el taller</h2>
-      <p>El diagnóstico y los repuestos se cotizan en el taller. Si aparece un trabajo adicional, te contactamos antes de realizarlo, explicamos la solución y tú decides.</p>
-      <h2>Qué se revisa al recibir la bicicleta</h2>
-      <p>La revisión de recepción contempla frenos, cadena, transmisión, ruedas, neumáticos, estado general y problemas visibles. Esta revisión permite registrar el estado de la bicicleta; no es una lista de reparaciones con precio fijo.</p>
-      <h2>Retiro y devolución a domicilio</h2>
-      <dl class="spec">
-        <div class="row"><dt>Cobertura</dt><dd>Vitacura y Las Condes</dd></div>
-        <div class="row"><dt>Precio</dt><dd>$15.000 por retiro y devolución</dd></div>
-        <div class="row"><dt>Incluye</dt><dd>Ir a buscar y devolver tu bicicleta</dd></div>
-      </dl>
-      <h2>Horario de recepción en el taller</h2>
-      <p>Lunes a viernes de 15:00 a 20:00. Sábado de 10:00 a 14:00.</p>
-      <p>Las reservas en línea no están habilitadas en este sitio. Para consultar disponibilidad, llama al <a href={`tel:${SITE.phone}`}>{SITE.phoneDisplay}</a> o escribe a <a href={`mailto:${SITE.email}`}>{SITE.email}</a>.</p>
-      <p><a href="/">Volver a Vector Bikes</a></p>
+      <h1>Mecánica de bicicletas en Vitacura.</h1>
+      <p class="lede">Atención en taller, diagnóstico y cotización, retiro y devolución a domicilio.</p>
+      {sections.map((item) => (
+        <section>
+          <h2>{item.title}</h2>
+          {item.content.split(/\n\s*\n/).map((paragraph) => <p>{paragraph}</p>)}
+          <p><a href={item.source.reference}>Fuente de esta información</a></p>
+        </section>
+      ))}
+      <div class="actions"><a class="btn" href="tel:+56985095780">Consultar al taller</a><a class="btn ghost" href="mailto:info@vectorbikes.cl">Consultar por correo</a></div>
+      <p><a href="/geo/">Información publicada y fuentes</a> · <a href="/">Volver a Vector Bikes</a></p>
     </div>
   </section>
 </Base>

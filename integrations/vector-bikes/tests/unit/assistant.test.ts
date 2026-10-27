@@ -7,6 +7,7 @@ vi.mock("openai", () => ({
   },
 }));
 import { assistantResponse } from "../../src/server/assistant.ts";
+import { KNOWLEDGE_VERSION, PUBLIC_KNOWLEDGE } from "../../src/lib/public-knowledge.ts";
 
 const origin = "https://vectorbikestest.cl";
 function request(body: unknown = { question: "¿Cuál es el horario?" }, requestOrigin = origin) {
@@ -52,6 +53,7 @@ describe("asistente público", () => {
     const response = await assistantResponse(request());
     const text = await response.text();
     expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(response.headers.get("x-knowledge-version")).toBe(KNOWLEDGE_VERSION);
     expect(text).toContain("event: delta");
     expect(text).toContain("event: done");
     expect(create.mock.calls[0]?.[0]).toMatchObject({
@@ -59,6 +61,9 @@ describe("asistente público", () => {
       stream: true,
       max_output_tokens: 600,
     });
+    const instructions = create.mock.calls[0]?.[0].instructions;
+    expect(instructions).toContain(JSON.stringify(PUBLIC_KNOWLEDGE));
+    expect(instructions).toContain(KNOWLEDGE_VERSION);
   });
   it("informa fallos del proveedor sin filtrar detalles", async () => {
     create.mockRejectedValue(new Error("secret-provider-diagnostic"));
