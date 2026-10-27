@@ -45,7 +45,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d vector_bikes_ci"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -75,7 +75,9 @@ jobs:
           corepack pnpm@12.4.2 format
           git diff --exit-code
       - name: Ejecutar todas las pruebas unitarias y de integración
-        run: corepack pnpm@12.4.2 exec vitest run --pool=threads --maxWorkers=1
+        # PGlite/Wasm produjo un fallo nativo de V8 con worker_threads.
+        # Procesos separados preservan el aislamiento y ejecutan la suite completa.
+        run: corepack pnpm@12.4.2 exec vitest run --pool=forks --maxWorkers=2
       - name: Migrar exclusivamente la base desechable de CI
         run: corepack pnpm@12.4.2 db:migrate
       - name: Compilar aplicación y verificar build
