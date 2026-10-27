@@ -14,7 +14,8 @@
       "!!**/.astro",
       "!!**/drizzle",
       "!!**/.claude",
-      "!!**/node_modules"
+      "!!**/node_modules",
+      "!!**/public/geo"
     ]
   },
   "formatter": {

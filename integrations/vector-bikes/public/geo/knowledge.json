@@ -1,0 +1,58 @@
+{
+  "canonical_url": "https://vectorbikestest.cl/geo/",
+  "company_id": "vectorbikes",
+  "items": [
+    {
+      "chunk_id": "scw:vectorbikes:domain:commercial_process:rev:20372ad302ba822591e9759420124bbba82ddddd66106bb5dc4dda0c77be4950:chunk:1",
+      "content": "El retiro y devolución de bicicletas tiene un precio de $15.000 en Vitacura y Las Condes. Este valor incluye ambos trayectos: ir a buscar y devolver la bicicleta. La coordinación se consulta directamente al taller.",
+      "document_id": "scw:vectorbikes:domain:commercial_process:rev:20372ad302ba822591e9759420124bbba82ddddd66106bb5dc4dda0c77be4950:document",
+      "source": {
+        "id": "scw:vectorbikes:domain:commercial_process:rev:20372ad302ba822591e9759420124bbba82ddddd66106bb5dc4dda0c77be4950:source",
+        "reference": "https://vectorbikestest.cl/servicios/"
+      },
+      "title": "Retiro y devolución a domicilio"
+    },
+    {
+      "chunk_id": "scw:vectorbikes:domain:company_profile:rev:280d7892a8b39fd2dbaeeae2086a9e4539dcfb9a506c57c412e77b854855a909:chunk:1",
+      "content": "Vector Bikes es un taller de bicicletas en Avenida Kennedy 7666, Vitacura, Región Metropolitana, Chile.\n\nTeléfono: +56 9 8509 5780. Correo: info@vectorbikes.cl.",
+      "document_id": "scw:vectorbikes:domain:company_profile:rev:280d7892a8b39fd2dbaeeae2086a9e4539dcfb9a506c57c412e77b854855a909:document",
+      "source": {
+        "id": "scw:vectorbikes:domain:company_profile:rev:280d7892a8b39fd2dbaeeae2086a9e4539dcfb9a506c57c412e77b854855a909:source",
+        "reference": "https://vectorbikestest.cl/"
+      },
+      "title": "Dirección y contacto"
+    },
+    {
+      "chunk_id": "scw:vectorbikes:domain:operational_context:rev:9e19a3439c16bb11abf62599083e6c362c4a24a86b9824d9bb6e37a99d15f7df:chunk:1",
+      "content": "La recepción en el taller es de lunes a viernes de 15:00 a 20:00 y los sábados de 10:00 a 14:00.",
+      "document_id": "scw:vectorbikes:domain:operational_context:rev:9e19a3439c16bb11abf62599083e6c362c4a24a86b9824d9bb6e37a99d15f7df:document",
+      "source": {
+        "id": "scw:vectorbikes:domain:operational_context:rev:9e19a3439c16bb11abf62599083e6c362c4a24a86b9824d9bb6e37a99d15f7df:source",
+        "reference": "https://vectorbikestest.cl/servicios/"
+      },
+      "title": "Horario de recepción"
+    },
+    {
+      "chunk_id": "scw:vectorbikes:domain:operational_process:rev:83979fae167344e00cb60ff71b2bb2a8f4bf2c53cb51e20d158fde697e77f680:chunk:1",
+      "content": "Las reservas en línea no están habilitadas en este sitio. Para consultar disponibilidad, llama al +56 9 8509 5780 o escribe a info@vectorbikes.cl. La información publicada no confirma disponibilidad de agenda en tiempo real. Los precios de reparaciones, plazos de entrega, especialidades y garantías deben consultarse al taller.",
+      "document_id": "scw:vectorbikes:domain:operational_process:rev:83979fae167344e00cb60ff71b2bb2a8f4bf2c53cb51e20d158fde697e77f680:document",
+      "source": {
+        "id": "scw:vectorbikes:domain:operational_process:rev:83979fae167344e00cb60ff71b2bb2a8f4bf2c53cb51e20d158fde697e77f680:source",
+        "reference": "https://vectorbikestest.cl/servicios/"
+      },
+      "title": "Consultas de disponibilidad"
+    },
+    {
+      "chunk_id": "scw:vectorbikes:domain:products_services:rev:3cf6601274448b037b549e5d3a5700ba8014ab0acd36eaa2520abb23dd0ef140:chunk:1",
+      "content": "Al recibir la bicicleta se revisan frenos, cadena, transmisión, ruedas, neumáticos, estado general y problemas visibles. Son controles de recepción; no constituyen un catálogo de reparaciones con precios fijos.\n\nEl diagnóstico y los repuestos se cotizan en el taller. Si aparece un trabajo adicional, el taller contacta al cliente antes de realizarlo, explica la solución y solicita su aprobación.",
+      "document_id": "scw:vectorbikes:domain:products_services:rev:3cf6601274448b037b549e5d3a5700ba8014ab0acd36eaa2520abb23dd0ef140:document",
+      "source": {
+        "id": "scw:vectorbikes:domain:products_services:rev:3cf6601274448b037b549e5d3a5700ba8014ab0acd36eaa2520abb23dd0ef140:source",
+        "reference": "https://vectorbikestest.cl/servicios/"
+      },
+      "title": "Recepción, diagnóstico y cotización"
+    }
+  ],
+  "name": "Vector Bikes",
+  "schema_version": "1"
+}

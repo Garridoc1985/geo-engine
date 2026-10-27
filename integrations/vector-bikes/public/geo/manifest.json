@@ -1,0 +1,24 @@
+{
+  "canonical_url": "https://vectorbikestest.cl/geo/",
+  "company_id": "vectorbikes",
+  "content_version": "3b3a80b2cb0f0f8b2e1bd929170ad87c6b37af07613c58e7b05aba78cf8fe9ec",
+  "files": {
+    "INSTALL.md": "295c18c685dee82c4568186dba479868ab8ea1b0ef40de06f3d33788562eed88",
+    "body-fragment.html": "554fbbab328cec3b4a937167a9ab9f28521fa31f13c422b16617ff07ab10d41b",
+    "head-fragment.html": "c68ad6bbfc5663356c5da14a366a9f0e60b9983b302f1ef3a4f354c9a756e3dd",
+    "home-link.html": "6e72ea030b439478a6359a196aaf69e86d033e98c10a852a35eb44d80fdb58da",
+    "index.html": "9a03c5645ca8ad6680e0af5330998629eebea15f8cc581aa01e7cf2366992dc6",
+    "knowledge.json": "3b3a80b2cb0f0f8b2e1bd929170ad87c6b37af07613c58e7b05aba78cf8fe9ec",
+    "robots-merge.txt": "7482f7f773222091b2c7be7e4ec8af50081d1f8b96b479e096cf3fa78610ef3d",
+    "sitemap.xml": "8b86f799254bc4034996f9116ae7c4a5695be431868fe35564f4a3b42a3c1fff"
+  },
+  "format": "site-integration",
+  "item_count": 5,
+  "schema_version": "1",
+  "source_count": 2,
+  "sources": [
+    "https://vectorbikestest.cl/",
+    "https://vectorbikestest.cl/servicios/"
+  ],
+  "status": "prepared"
+}

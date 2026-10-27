@@ -22,7 +22,9 @@ jobs:
         run: corepack pnpm@12.4.2 install --frozen-lockfile
       - name: Revisar código y tipos
         run: corepack pnpm@12.4.2 check
+      - name: Verificar integridad y empresa del paquete público
+        run: node --test scripts/geo-install.test.mjs
       - name: Probar stream con proveedor simulado
-        run: corepack pnpm@12.4.2 exec vitest run tests/unit/assistant.test.ts --pool=threads --maxWorkers=1
+        run: corepack pnpm@12.4.2 exec vitest run tests/unit/assistant.test.ts tests/unit/public-knowledge.test.ts --pool=threads --maxWorkers=1
       - name: Compilar solo páginas públicas
         run: corepack pnpm@12.4.2 exec astro build --config astro.public-test.config.mjs
