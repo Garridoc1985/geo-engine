@@ -32,3 +32,11 @@ JSON. La página de servicios y el asistente usan esa misma versión. El dominio
 canónico de la publicación de prueba se conserva en `vectorbikestest.cl`; los
 enlaces a `vectorbikes.cl` se utilizan como fuentes, no como canonical de destino.
 La existencia de estas páginas no demuestra posición, indexación ni citas externas.
+
+## Prueba de respuesta del asistente
+
+La consulta de precio, cobertura y medios de pago devolvió los datos esperados.
+Una consulta de prueba sobre suspensiones RockShox insinuó una capacidad no
+documentada. Se reforzó la instrucción para no extrapolar mecánica general a
+marcas o componentes y exigir confirmación del taller para esas especialidades.
+El resultado de la nueva prueba se registra después del despliegue de revisión.
