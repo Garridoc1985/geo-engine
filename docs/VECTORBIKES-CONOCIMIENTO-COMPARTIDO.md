@@ -1,6 +1,6 @@
 # Vector Bikes Test — conocimiento público compartido
 
-26 de octubre de 2026. Integración preparada para revisión, sin publicación en producción.
+27 de octubre de 2026. Integración preparada para revisión, sin publicación en producción.
 
 ## Alcance
 
@@ -10,15 +10,16 @@ consumen el mismo snapshot exportado desde PostgreSQL mediante GEO Engine.
 datos en el bundle de la función sin leer archivos del servidor en cada petición.
 La respuesta SSE identifica su snapshot mediante `X-Knowledge-Version`.
 
-Selección: cinco registros públicos de Vector Bikes con contacto, controles de
-recepción, horario, retiro/devolución y consultas de disponibilidad. Se usan los
+Selección: siete registros públicos de Vector Bikes con mecánica de bicicletas,
+diagnóstico/cotización, contacto, horarios, retiro/devolución, medios de pago y
+consultas de disponibilidad. Fuente contrastada: `VECTORBIKES-FUENTE-PUBLICA-20261027.md`. Se usan los
 datos aprobados por el propietario el 23 de octubre y las condiciones publicadas.
 La selección anterior del 19 de octubre mencionaba reservas en línea: se conservó
 como historial inactivo y se sustituyó por la condición vigente del sitio de prueba.
 No se incorporaron documentos internos, notas de clientes ni datos de Company Brain.
 
 Versión SHA-256 del conocimiento:
-`3b3a80b2cb0f0f8b2e1bd929170ad87c6b37af07613c58e7b05aba78cf8fe9ec`.
+`2ba9fd191e2638399c7f4fd1708f7390a53b6c86282689e7c9222b84b7f9a451`.
 Esta versión es una huella de contenido, no una firma de aprobación editorial.
 
 ## Entrega y controles

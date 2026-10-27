@@ -1,23 +1,25 @@
 {
   "canonical_url": "https://vectorbikestest.cl/geo/",
   "company_id": "vectorbikes",
-  "content_version": "3b3a80b2cb0f0f8b2e1bd929170ad87c6b37af07613c58e7b05aba78cf8fe9ec",
+  "content_version": "2ba9fd191e2638399c7f4fd1708f7390a53b6c86282689e7c9222b84b7f9a451",
   "files": {
-    "INSTALL.md": "295c18c685dee82c4568186dba479868ab8ea1b0ef40de06f3d33788562eed88",
-    "body-fragment.html": "554fbbab328cec3b4a937167a9ab9f28521fa31f13c422b16617ff07ab10d41b",
-    "head-fragment.html": "c68ad6bbfc5663356c5da14a366a9f0e60b9983b302f1ef3a4f354c9a756e3dd",
+    "INSTALL.md": "99c41d487e27f9cc4a68285281ab52f2094f0fb78b25cfff9c80b5c1943e7adc",
+    "body-fragment.html": "334a8dfd2042243143a1e207545ed31d1a37c7aca3024d7607589676437b82b2",
+    "head-fragment.html": "8915d910496eb9161557055371d92f4a70e9e8d016978dd8f470ac185c23f21b",
     "home-link.html": "6e72ea030b439478a6359a196aaf69e86d033e98c10a852a35eb44d80fdb58da",
-    "index.html": "9a03c5645ca8ad6680e0af5330998629eebea15f8cc581aa01e7cf2366992dc6",
-    "knowledge.json": "3b3a80b2cb0f0f8b2e1bd929170ad87c6b37af07613c58e7b05aba78cf8fe9ec",
+    "index.html": "45fd297c0ea7c882934bd64ae85cd0a5b72b10d9744fe03d25f5860ef2b328ea",
+    "knowledge.json": "2ba9fd191e2638399c7f4fd1708f7390a53b6c86282689e7c9222b84b7f9a451",
     "robots-merge.txt": "7482f7f773222091b2c7be7e4ec8af50081d1f8b96b479e096cf3fa78610ef3d",
     "sitemap.xml": "8b86f799254bc4034996f9116ae7c4a5695be431868fe35564f4a3b42a3c1fff"
   },
   "format": "site-integration",
-  "item_count": 5,
+  "item_count": 7,
   "schema_version": "1",
-  "source_count": 2,
+  "source_count": 4,
   "sources": [
-    "https://vectorbikestest.cl/",
+    "https://vectorbikes.cl/#como-funciona",
+    "https://vectorbikes.cl/#retiro",
+    "https://vectorbikes.cl/#taller",
     "https://vectorbikestest.cl/servicios/"
   ],
   "status": "prepared"

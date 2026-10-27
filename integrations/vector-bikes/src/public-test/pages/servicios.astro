@@ -1,24 +1,38 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { KNOWLEDGE_VERSION, PUBLIC_KNOWLEDGE } from "../../lib/public-knowledge.ts";
+const order = [
+  "business_model",
+  "products_services",
+  "commercial_process",
+  "operational_context",
+  "financial_context",
+  "company_profile",
+  "operational_process",
+];
+const sections = order.flatMap((domain) =>
+  PUBLIC_KNOWLEDGE.items.filter((item) => item.document_id.includes(`:domain:${domain}:`)),
+);
 ---
 <Base
-  title="Diagnóstico y retiro de bicicletas en Vitacura | Vector Bikes"
-  description="Diagnóstico y cotización en el taller Vector Bikes. Retiro y devolución por $15.000 en Vitacura y Las Condes. Dirección, horarios de recepción y contacto."
+  title="Mecánica de bicicletas y retiro en Vitacura | Vector Bikes"
+  description="Taller de mecánica de bicicletas en Vitacura. Diagnóstico y cotización, retiro y devolución por $15.000 en Vitacura y Las Condes, horarios y medios de pago."
   path="/servicios"
-  bookingEnabled={false}
   bookingEnabled={false}
 >
   <section class="section" data-knowledge-version={KNOWLEDGE_VERSION}>
     <div class="wrap">
       <span class="label">Vector Bikes · Vitacura</span>
-      <h1>Diagnóstico y retiro de bicicletas.</h1>
-      {PUBLIC_KNOWLEDGE.items.map((item) => (
+      <h1>Mecánica de bicicletas en Vitacura.</h1>
+      <p class="lede">Atención en taller, diagnóstico y cotización, retiro y devolución a domicilio.</p>
+      {sections.map((item) => (
         <section>
           <h2>{item.title}</h2>
           {item.content.split(/\n\s*\n/).map((paragraph) => <p>{paragraph}</p>)}
+          <p><a href={item.source.reference}>Fuente de esta información</a></p>
         </section>
       ))}
+      <div class="actions"><a class="btn" href="tel:+56985095780">Consultar al taller</a><a class="btn ghost" href="mailto:info@vectorbikes.cl">Consultar por correo</a></div>
       <p><a href="/geo/">Información publicada y fuentes</a> · <a href="/">Volver a Vector Bikes</a></p>
     </div>
   </section>

@@ -3,32 +3,52 @@
   "company_id": "vectorbikes",
   "items": [
     {
-      "chunk_id": "scw:vectorbikes:domain:commercial_process:rev:20372ad302ba822591e9759420124bbba82ddddd66106bb5dc4dda0c77be4950:chunk:1",
-      "content": "El retiro y devolución de bicicletas tiene un precio de $15.000 en Vitacura y Las Condes. Este valor incluye ambos trayectos: ir a buscar y devolver la bicicleta. La coordinación se consulta directamente al taller.",
-      "document_id": "scw:vectorbikes:domain:commercial_process:rev:20372ad302ba822591e9759420124bbba82ddddd66106bb5dc4dda0c77be4950:document",
+      "chunk_id": "scw:vectorbikes:domain:business_model:rev:41d240c2cc0cf37f8bbc82f40b28cd62e39353773cb50653f3c3de65eda38556:chunk:1",
+      "content": "Vector Bikes ofrece atención de mecánica de bicicletas en su taller de Vitacura. El cliente puede describir qué le ocurre a su bicicleta o qué trabajo necesita; el taller la revisa y cotiza el diagnóstico y los repuestos. Puedes entregar la bicicleta en Avenida Kennedy 7666 o consultar el retiro y devolución a domicilio en Vitacura y Las Condes.",
+      "document_id": "scw:vectorbikes:domain:business_model:rev:41d240c2cc0cf37f8bbc82f40b28cd62e39353773cb50653f3c3de65eda38556:document",
       "source": {
-        "id": "scw:vectorbikes:domain:commercial_process:rev:20372ad302ba822591e9759420124bbba82ddddd66106bb5dc4dda0c77be4950:source",
-        "reference": "https://vectorbikestest.cl/servicios/"
+        "id": "scw:vectorbikes:domain:business_model:rev:41d240c2cc0cf37f8bbc82f40b28cd62e39353773cb50653f3c3de65eda38556:source",
+        "reference": "https://vectorbikes.cl/#como-funciona"
+      },
+      "title": "Mecánica de bicicletas en Vitacura"
+    },
+    {
+      "chunk_id": "scw:vectorbikes:domain:commercial_process:rev:e78820ee187b8c952bef7519c38148f7f226881094b0ce97f6e889c566385f75:chunk:1",
+      "content": "El retiro y devolución de bicicletas tiene un precio de $15.000 en Vitacura y Las Condes. Este valor incluye ambos trayectos: ir a buscar y devolver la bicicleta. Los retiros a domicilio comienzan a las 09:00 de lunes a viernes. La devolución se coordina por teléfono cuando la bicicleta está lista. En el sitio de prueba, la coordinación se consulta directamente al taller.",
+      "document_id": "scw:vectorbikes:domain:commercial_process:rev:e78820ee187b8c952bef7519c38148f7f226881094b0ce97f6e889c566385f75:document",
+      "source": {
+        "id": "scw:vectorbikes:domain:commercial_process:rev:e78820ee187b8c952bef7519c38148f7f226881094b0ce97f6e889c566385f75:source",
+        "reference": "https://vectorbikes.cl/#retiro"
       },
       "title": "Retiro y devolución a domicilio"
     },
     {
-      "chunk_id": "scw:vectorbikes:domain:company_profile:rev:280d7892a8b39fd2dbaeeae2086a9e4539dcfb9a506c57c412e77b854855a909:chunk:1",
+      "chunk_id": "scw:vectorbikes:domain:company_profile:rev:7ee1845fb41a25f664d00a68e2cd13bbcde570a41235d1ba942ce266a7cf295c:chunk:1",
       "content": "Vector Bikes es un taller de bicicletas en Avenida Kennedy 7666, Vitacura, Región Metropolitana, Chile.\n\nTeléfono: +56 9 8509 5780. Correo: info@vectorbikes.cl.",
-      "document_id": "scw:vectorbikes:domain:company_profile:rev:280d7892a8b39fd2dbaeeae2086a9e4539dcfb9a506c57c412e77b854855a909:document",
+      "document_id": "scw:vectorbikes:domain:company_profile:rev:7ee1845fb41a25f664d00a68e2cd13bbcde570a41235d1ba942ce266a7cf295c:document",
       "source": {
-        "id": "scw:vectorbikes:domain:company_profile:rev:280d7892a8b39fd2dbaeeae2086a9e4539dcfb9a506c57c412e77b854855a909:source",
-        "reference": "https://vectorbikestest.cl/"
+        "id": "scw:vectorbikes:domain:company_profile:rev:7ee1845fb41a25f664d00a68e2cd13bbcde570a41235d1ba942ce266a7cf295c:source",
+        "reference": "https://vectorbikes.cl/#taller"
       },
       "title": "Dirección y contacto"
     },
     {
-      "chunk_id": "scw:vectorbikes:domain:operational_context:rev:9e19a3439c16bb11abf62599083e6c362c4a24a86b9824d9bb6e37a99d15f7df:chunk:1",
-      "content": "La recepción en el taller es de lunes a viernes de 15:00 a 20:00 y los sábados de 10:00 a 14:00.",
-      "document_id": "scw:vectorbikes:domain:operational_context:rev:9e19a3439c16bb11abf62599083e6c362c4a24a86b9824d9bb6e37a99d15f7df:document",
+      "chunk_id": "scw:vectorbikes:domain:financial_context:rev:cfc64d3cb55ade6a34a424341202c959b83d68630cb0970bcc737112f0fe952f:chunk:1",
+      "content": "Puedes pagar en efectivo, por transferencia o con tarjeta al recibir la bicicleta terminada. En el servicio a domicilio el pago se realiza al devolverla y el taller lleva POS para tarjeta.",
+      "document_id": "scw:vectorbikes:domain:financial_context:rev:cfc64d3cb55ade6a34a424341202c959b83d68630cb0970bcc737112f0fe952f:document",
       "source": {
-        "id": "scw:vectorbikes:domain:operational_context:rev:9e19a3439c16bb11abf62599083e6c362c4a24a86b9824d9bb6e37a99d15f7df:source",
-        "reference": "https://vectorbikestest.cl/servicios/"
+        "id": "scw:vectorbikes:domain:financial_context:rev:cfc64d3cb55ade6a34a424341202c959b83d68630cb0970bcc737112f0fe952f:source",
+        "reference": "https://vectorbikes.cl/#retiro"
+      },
+      "title": "Medios de pago"
+    },
+    {
+      "chunk_id": "scw:vectorbikes:domain:operational_context:rev:b4f36e8f0d3c7e15466165889fb04712ca1ffc9cb8564c98ab658a7f61821665:chunk:1",
+      "content": "La recepción en el taller es de lunes a viernes de 15:00 a 20:00 y los sábados de 10:00 a 14:00. El taller permanece cerrado los domingos y feriados.",
+      "document_id": "scw:vectorbikes:domain:operational_context:rev:b4f36e8f0d3c7e15466165889fb04712ca1ffc9cb8564c98ab658a7f61821665:document",
+      "source": {
+        "id": "scw:vectorbikes:domain:operational_context:rev:b4f36e8f0d3c7e15466165889fb04712ca1ffc9cb8564c98ab658a7f61821665:source",
+        "reference": "https://vectorbikes.cl/#taller"
       },
       "title": "Horario de recepción"
     },
@@ -43,14 +63,14 @@
       "title": "Consultas de disponibilidad"
     },
     {
-      "chunk_id": "scw:vectorbikes:domain:products_services:rev:3cf6601274448b037b549e5d3a5700ba8014ab0acd36eaa2520abb23dd0ef140:chunk:1",
-      "content": "Al recibir la bicicleta se revisan frenos, cadena, transmisión, ruedas, neumáticos, estado general y problemas visibles. Son controles de recepción; no constituyen un catálogo de reparaciones con precios fijos.\n\nEl diagnóstico y los repuestos se cotizan en el taller. Si aparece un trabajo adicional, el taller contacta al cliente antes de realizarlo, explica la solución y solicita su aprobación.",
-      "document_id": "scw:vectorbikes:domain:products_services:rev:3cf6601274448b037b549e5d3a5700ba8014ab0acd36eaa2520abb23dd0ef140:document",
+      "chunk_id": "scw:vectorbikes:domain:products_services:rev:c078ba901384afe2eb1f8027d0325396eefeb4fc58e838794075a40c61705312:chunk:1",
+      "content": "Puedes describir qué le ocurre a tu bicicleta o qué trabajo necesitas. El taller revisa la bicicleta antes de realizar los trabajos.\n\nEl diagnóstico y los repuestos se cotizan en el taller. Si aparece un trabajo adicional, el taller contacta al cliente antes de realizarlo, explica la solución y solicita su aprobación.",
+      "document_id": "scw:vectorbikes:domain:products_services:rev:c078ba901384afe2eb1f8027d0325396eefeb4fc58e838794075a40c61705312:document",
       "source": {
-        "id": "scw:vectorbikes:domain:products_services:rev:3cf6601274448b037b549e5d3a5700ba8014ab0acd36eaa2520abb23dd0ef140:source",
-        "reference": "https://vectorbikestest.cl/servicios/"
+        "id": "scw:vectorbikes:domain:products_services:rev:c078ba901384afe2eb1f8027d0325396eefeb4fc58e838794075a40c61705312:source",
+        "reference": "https://vectorbikes.cl/#como-funciona"
       },
-      "title": "Recepción, diagnóstico y cotización"
+      "title": "Diagnóstico y cotización en el taller"
     }
   ],
   "name": "Vector Bikes",
