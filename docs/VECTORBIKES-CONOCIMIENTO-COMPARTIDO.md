@@ -34,6 +34,9 @@ no declaradas, datos de otra empresa y referencias sin HTTPS o con credenciales.
 Los registros se muestran como texto escapado en Astro; no se interpretan como HTML.
 El asistente conserva sus límites, controles de origen y política de no reservar
 ni inventar precios, disponibilidad o garantías.
+Los sitemaps tienen listas explícitas por entorno: el build operativo conserva
+solo inicio/privacidad y el de prueba incorpora servicios/GEO, sin añadir rutas
+internas ni el asistente a la lista de páginas indexables.
 
 ## Actualización y rollback
 

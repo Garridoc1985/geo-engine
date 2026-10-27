@@ -1,5 +1,5 @@
 import { defineConfig } from "astro/config";
-import baseConfig from "./astro.config.mjs";
+import baseConfig, { createSiteIntegrations } from "./astro.config.mjs";
 import { validateRelease } from "./scripts/geo-install.mjs";
 
 // Rechaza un release incompleto o alterado antes de compilar la versión pública.
@@ -14,7 +14,7 @@ export default defineConfig({
   adapter: undefined,
   outDir: "./dist-public-test",
   integrations: [
-    ...baseConfig.integrations,
+    ...createSiteIntegrations("https://vectorbikestest.cl", true),
     {
       name: "public-site-indexing",
       hooks: {

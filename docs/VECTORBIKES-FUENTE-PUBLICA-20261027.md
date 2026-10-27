@@ -39,4 +39,16 @@ La consulta de precio, cobertura y medios de pago devolvió los datos esperados.
 Una consulta de prueba sobre suspensiones RockShox insinuó una capacidad no
 documentada. Se reforzó la instrucción para no extrapolar mecánica general a
 marcas o componentes y exigir confirmación del taller para esas especialidades.
-El resultado de la nueva prueba se registra después del despliegue de revisión.
+En la repetición contra el deploy `6ae0936ff962182ccc34c6a6`, el asistente indicó
+que no tenía confirmación sobre RockShox y derivó al contacto del taller. También
+indicó que no se podían hacer reservas en el sitio de prueba. Esto valida ese
+caso concreto; no acredita ausencia de otros errores del modelo.
+
+## Separación de sitemaps
+
+La primera regresión completó 916 pruebas unitarias/de integración, pero detectó
+que el paquete GEO agregaba una URL al sitemap del build operativo. Se separaron
+las listas de publicación: el operativo conserva inicio/privacidad y el entorno
+de prueba declara inicio/privacidad/servicios/GEO. No se modificaron las pruebas
+para aceptar el resultado: las 37 pruebas de build existentes pasaron tras
+corregir la configuración. La comprobación completa de CI se repite en la revisión.
